@@ -52,3 +52,52 @@ class IncrementalFashionMNIST:
         loader = torch.utils.data.DataLoader(data, batch_size=self.batch_size, shuffle=self.shuffle)
         return loader
 
+class IncrementalTinyImageNet:
+    '''Automatically create data loaders for incremental learning on TinyImageNet dataset'''
+    def __init__(self, increment, batch_size=64, shuffle=True):
+        self.train_set = datasets.ImageFolder(
+                                                root="data/tiny-imagenet-200/train",
+                                                transform=transforms.Compose([
+                                                    transforms.Resize((64, 64)),
+                                                    transforms.ToTensor()
+                                                ])
+                                        )
+        self.test_set = datasets.ImageFolder(
+                                                root="data/tiny-imagenet-200/val",
+                                                transform=transforms.Compose([
+                                                    transforms.Resize((64, 64)),
+                                                    transforms.ToTensor()
+                                                ])
+                                        )
+        self.increment = increment
+        self.current_class = 0
+        self.batch_size = batch_size
+        self.shuffle = shuffle
+
+    def get_set(self, mode):
+        if mode == 'train':
+            data = self.train_set
+        elif mode == 'test':
+            data = self.test_set
+        else:
+            raise ValueError("Mode should be 'train' or 'test'")
+
+        indices = [i for i, (_, label) in enumerate(data) if label in range(self.current_class - self.increment, self.current_class)]
+        subset = torch.utils.data.Subset(data, indices)
+        loader = torch.utils.data.DataLoader(subset, batch_size=self.batch_size, shuffle=self.shuffle)
+        
+        return loader
+    
+    def next_task(self):
+        self.current_class += self.increment
+
+    def get_whole_set(self, mode):
+        if mode == 'train':
+            data = self.train_set
+        elif mode == 'test':
+            data = self.test_set
+        else:
+            raise ValueError("Mode should be 'train' or 'test'")
+
+        loader = torch.utils.data.DataLoader(data, batch_size=self.batch_size, shuffle=self.shuffle)
+        return loader
