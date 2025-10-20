@@ -1,5 +1,5 @@
 import torch
-
+import numpy as np
 
 def add_heads(model, num_new_classes):
     """Add new output heads to the model for incremental learning."""
@@ -26,3 +26,20 @@ def add_heads(model, num_new_classes):
     # Replace the last layer
     model.network[-1] = new_last_layer
     return model
+
+
+def update_memory(memory_set, new_data, new_labels, memory_size):
+    """Update the memory set with new data and labels, maintaining a fixed memory size."""
+    combined_data = memory_set["data"] + new_data
+    combined_labels = memory_set["labels"] + new_labels
+    
+    if len(combined_data) > memory_size:
+        # Randomly select indices to keep
+        indices = np.random.choice(len(combined_data), memory_size, replace=False)
+        memory_set["data"] = [combined_data[i] for i in indices]
+        memory_set["labels"] = [combined_labels[i] for i in indices]
+    else:
+        memory_set["data"] = combined_data
+        memory_set["labels"] = combined_labels
+    
+    return memory_set
