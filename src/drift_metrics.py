@@ -35,7 +35,7 @@ def _center_gram(K: torch.Tensor) -> torch.Tensor:
 
 
 def linear_cka(a: torch.Tensor, b: torch.Tensor) -> float:
-    """Linear CKA between representations a and b.
+    """Linear Centered Kernel Alignment between representations a and b.
 
     a, b: [N, D]
     """

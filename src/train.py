@@ -25,15 +25,43 @@ def normal_train(model, train_loader, criterion, optimizer, device, epochs, val_
         print(f"Epoch [{epoch+1}/{epochs}], Loss: {epoch_loss:.4f}")
 
 
-def replay_train(model, train_set, criterion, optimizer, device, epochs, memory_set, memory_size,batch_size=64):
+def replay_train(model, train_set, criterion, optimizer, device, epochs, memory_set, memory_size, batch_size=64):
     model.train()
     running_loss = 0.0
-    memory_dataset = torch.utils.data.TensorDataset(
-        torch.stack(memory_set["data"]), 
-        torch.tensor(memory_set["labels"])
-        )
-    combined_dataset = torch.utils.data.ConcatDataset([train_set, memory_dataset])
-    combined_loader = torch.utils.data.DataLoader(combined_dataset, batch_size=batch_size, shuffle=True)
+    
+    # Handle empty memory case
+    if len(memory_set["data"]) == 0:
+        print("No memory samples available, training only on current task data")
+        combined_loader = torch.utils.data.DataLoader(train_set, batch_size=batch_size, shuffle=True)
+    else:
+        # Create memory dataset - ensure all data tensors have the same shape
+        try:
+            # Stack memory data and convert labels to tensor
+            memory_data_tensor = torch.stack(memory_set["data"])
+            memory_labels_tensor = torch.tensor(memory_set["labels"], dtype=torch.long)
+            
+            # Create a custom dataset class that matches the format of train_set
+            class MemoryDataset(torch.utils.data.Dataset):
+                def __init__(self, data_tensor, labels_tensor):
+                    self.data = data_tensor
+                    self.labels = labels_tensor
+                
+                def __len__(self):
+                    return len(self.data)
+                
+                def __getitem__(self, idx):
+                    return self.data[idx], self.labels[idx].item()  # Return as tuple like train_set
+            
+            memory_dataset = MemoryDataset(memory_data_tensor, memory_labels_tensor)
+            combined_dataset = torch.utils.data.ConcatDataset([train_set, memory_dataset])
+            combined_loader = torch.utils.data.DataLoader(combined_dataset, batch_size=batch_size, shuffle=True)
+        except Exception as e:
+            print(f"Error creating memory dataset: {e}")
+            print(f"Memory data shapes: {[d.shape for d in memory_set['data'][:5]]}")
+            print(f"Memory labels: {memory_set['labels'][:10]}")
+            # Fallback to training only on current task
+            combined_loader = torch.utils.data.DataLoader(train_set, batch_size=batch_size, shuffle=True)
+    
     for epoch in range(epochs):
         progress_bar = tqdm.tqdm(combined_loader, desc=f"Epoch {epoch+1}/{epochs}")
         for inputs, labels in progress_bar:
@@ -49,17 +77,40 @@ def replay_train(model, train_set, criterion, optimizer, device, epochs, memory_
             progress_bar.set_postfix(loss = running_loss / (progress_bar.n + 1))
         epoch_loss = running_loss / len(combined_loader)
         print(f"Epoch [{epoch+1}/{epochs}], Loss: {epoch_loss:.4f}")
+    
     # Update memory set after training
     new_data = []
     new_labels = []
-    categories = len(set(memory_set["labels"]))
-    if categories == 0:
-        indices = random.sample(range(len(train_set)), memory_size)
-    else:
-        indices = random.sample(range(len(train_set)), memory_size//categories)
-    for idx in indices:
-        data, label = train_set[idx]
-        new_data.append(data.cpu())
-        new_labels.append(label)
-    memory_set = update_memory(memory_set, new_data, new_labels, memory_size)
     
+    # Sample from current task data to add to memory
+    # Calculate how many samples to add per class in current task
+    current_task_classes = set()
+    for _, label in train_set:
+        current_task_classes.add(label)
+    
+    samples_per_class = max(1, memory_size // len(current_task_classes))
+    
+    # Sample data from current task
+    for class_label in current_task_classes:
+        class_indices = [i for i, (_, label) in enumerate(train_set) if label == class_label]
+        if len(class_indices) > 0:
+            # Sample up to samples_per_class from this class
+            num_samples = min(samples_per_class, len(class_indices))
+            selected_indices = random.sample(class_indices, num_samples)
+            
+            for idx in selected_indices:
+                data, label = train_set[idx]
+                # Ensure data is a tensor and label is an integer
+                if isinstance(data, torch.Tensor):
+                    new_data.append(data.cpu())
+                else:
+                    new_data.append(torch.tensor(data).cpu())
+                new_labels.append(int(label))
+    
+    # Update memory with new samples
+    updated_memory = update_memory(memory_set, new_data, new_labels, memory_size)
+    print(f"Memory updated: {len(updated_memory['data'])} total samples")
+    
+    # Debug information
+    
+    return updated_memory

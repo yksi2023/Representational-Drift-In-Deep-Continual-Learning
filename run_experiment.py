@@ -1,9 +1,9 @@
 import argparse
 import torch
 
-from src.models import FashionMNISTModel
+from src.models import FashionMNISTModel, ResNet18_Tiny
 from src.continual import incremental_learning
-from datasets import IncrementalFashionMNIST
+from datasets import IncrementalFashionMNIST, IncrementalTinyImageNet
 
 
 def main():
@@ -14,15 +14,17 @@ def main():
     parser.add_argument("--lr", type=float, default=0.01)
     parser.add_argument("--momentum", type=float, default=0.9)
     parser.add_argument("--method", type=str, default="normal", choices=["normal", "replay"]) 
+    parser.add_argument("--memory_size", type=int, default=5000)
     parser.add_argument("--save_dir", type=str, default="experiments/fashion_mnist_incremental")
     parser.add_argument("--dataset", type=str, default="fashion_mnist", choices=["fashion_mnist", "tiny_imagenet"])
+    parser.add_argument("--no_comprehensive_eval", action="store_true", help="Skip comprehensive evaluation after training")
     args = parser.parse_args()
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     if args.dataset == "fashion_mnist":
         data_manager = IncrementalFashionMNIST()
-        model = FashionMNISTModel(output_size=args.increment)
+        model = FashionMNISTModel()
         num_classes = 10
         
     elif args.dataset == "tiny_imagenet":
@@ -48,7 +50,9 @@ def main():
         batch_size=args.batch_size,
         val_loader=None,
         method=args.method,
+        memory_size=args.memory_size,
         save_dir=args.save_dir,
+        run_comprehensive_eval=not args.no_comprehensive_eval,
     )
 
 

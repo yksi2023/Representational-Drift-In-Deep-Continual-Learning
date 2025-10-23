@@ -5,11 +5,11 @@ from typing import List
 import torch
 from torch.utils.data import DataLoader
 
-from src.models import FashionMNISTModel
+from src.models import FashionMNISTModel, ResNet18_Tiny
 from src.checkpoints import list_checkpoints, load_model
 from src.representations import extract_representations
 from src.drift_metrics import compute_all_metrics
-from datasets import IncrementalFashionMNIST
+from datasets import IncrementalFashionMNIST, IncrementalTinyImageNet
 
 
 def main():
@@ -24,8 +24,10 @@ def main():
 
     if args.dataset == "fashion_mnist":
         data_manager = IncrementalFashionMNIST()
+        model = FashionMNISTModel(output_size=10)
     elif args.dataset == "tiny_imagenet":
         data_manager = IncrementalTinyImageNet()
+        model = ResNet18_Tiny()
     else:
         raise ValueError("Invalid dataset")
 
@@ -36,8 +38,7 @@ def main():
     
     probe_loader = data_manager.get_loader(mode="test", label=range(10), batch_size=args.batch_size, shuffle=False)
 
-    # Prepare model skeleton matching the checkpoints' architecture
-    model = FashionMNISTModel(output_size=10)  # final head size doesn't affect hidden layers we hook
+     # final head size doesn't affect hidden layers we hook
     model.to(device)
 
     ckpts = list_checkpoints(args.ckpt_dir)

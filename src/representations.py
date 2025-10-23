@@ -64,5 +64,3 @@ def extract_representations(
             h.remove()
 
     return {ln: torch.cat(tensors, dim=0) if tensors else torch.empty(0) for ln, tensors in collected.items()}
-
-

@@ -36,6 +36,38 @@ def save_model(
     return ckpt_path
 
 
+def save_training_checkpoint(
+    model: torch.nn.Module,
+    optimizer: torch.optim.Optimizer,  # 保留接口方便，但不再用它
+    save_dir: str,
+    task_idx: int,
+    epoch: int,
+    training_params: Dict[str, Any],
+    extra_metadata: Optional[Dict[str, Any]] = None,
+) -> str:
+    """Save model and basic metadata (no optimizer state)."""
+    ckpt_path = _task_ckpt_path(save_dir, task_idx)
+    meta_path = _task_meta_path(save_dir, task_idx)
+
+    # 只保存模型参数
+    torch.save(model.state_dict(), ckpt_path)
+
+    #  只保留 JSON 兼容信息
+    metadata: Dict[str, Any] = {
+        "task_idx": task_idx,
+        "epoch": epoch,
+        "training_params": training_params,
+        "model_architecture": str(model),
+    }
+    if extra_metadata:
+        metadata.update(extra_metadata)
+
+    with open(meta_path, "w", encoding="utf-8") as f:
+        json.dump(metadata, f, ensure_ascii=False, indent=2)
+
+    return ckpt_path
+
+
 def load_model(
     model: torch.nn.Module,
     save_dir: str,
