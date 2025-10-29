@@ -60,3 +60,5 @@ if __name__ == "__main__":
     main()
 
 
+# Exampole command:
+# python run_experiment.py --increment 2 --epochs 1 --batch_size 64 --method replay --memory_size 5000 --save_dir experiments/fashion_mnist_incremental --dataset fashion_mnist

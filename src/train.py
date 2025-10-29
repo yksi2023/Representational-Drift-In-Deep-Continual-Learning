@@ -6,9 +6,9 @@ import random
 
 def normal_train(model, train_loader, criterion, optimizer, device, epochs, val_loader=None):
     model.train()
-    running_loss = 0.0
     
     for epoch in range(epochs):
+        running_loss = 0.0
         progress_bar = tqdm.tqdm(train_loader, desc=f"Epoch {epoch+1}/{epochs}")
         for inputs, labels in progress_bar:
             inputs, labels = inputs.to(device), labels.to(device)
@@ -27,7 +27,6 @@ def normal_train(model, train_loader, criterion, optimizer, device, epochs, val_
 
 def replay_train(model, train_set, criterion, optimizer, device, epochs, memory_set, memory_size, batch_size=64):
     model.train()
-    running_loss = 0.0
     
     # Handle empty memory case
     if len(memory_set["data"]) == 0:
@@ -63,6 +62,7 @@ def replay_train(model, train_set, criterion, optimizer, device, epochs, memory_
             combined_loader = torch.utils.data.DataLoader(train_set, batch_size=batch_size, shuffle=True)
     
     for epoch in range(epochs):
+        running_loss = 0.0
         progress_bar = tqdm.tqdm(combined_loader, desc=f"Epoch {epoch+1}/{epochs}")
         for inputs, labels in progress_bar:
             inputs, labels = inputs.to(device), labels.to(device)
