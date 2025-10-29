@@ -35,18 +35,45 @@ def update_memory(memory_set, new_data, new_labels, memory_size):
     
     combined_data = memory_set["data"] + new_data
     combined_labels = memory_set["labels"] + new_labels
-    
-    if len(combined_data) > memory_size:
-        # Randomly select indices to keep
-        indices = np.random.choice(len(combined_data), memory_size, replace=False)
-        updated_memory = {
-            "data": [combined_data[i] for i in indices],
-            "labels": [combined_labels[i] for i in indices]
-        }
-    else:
-        updated_memory = {
-            "data": combined_data,
-            "labels": combined_labels
-        }
-    
+
+    # Class-balanced retention: allocate roughly equal quota per seen class
+    from collections import defaultdict
+    label_to_indices = defaultdict(list)
+    for idx, lbl in enumerate(combined_labels):
+        label_to_indices[int(lbl)].append(idx)
+
+    seen_labels = sorted(label_to_indices.keys())
+    if len(seen_labels) == 0:
+        return {"data": [], "labels": []}
+
+    per_class_quota = max(1, memory_size // len(seen_labels))
+
+    selected_indices = []
+    # First pass: take up to per_class_quota from each class
+    for lbl in seen_labels:
+        indices = label_to_indices[lbl]
+        if len(indices) <= per_class_quota:
+            selected_indices.extend(indices)
+        else:
+            chosen = np.random.choice(indices, per_class_quota, replace=False)
+            selected_indices.extend(chosen.tolist())
+
+    # If we still have room (because some classes had < quota), fill with leftovers
+    if len(selected_indices) < memory_size:
+        already = set(selected_indices)
+        leftovers = [idx for lbl in seen_labels for idx in label_to_indices[lbl] if idx not in already]
+        need = min(memory_size - len(selected_indices), len(leftovers))
+        if need > 0:
+            extra = np.random.choice(leftovers, need, replace=False)
+            selected_indices.extend(extra.tolist())
+
+    # If we exceeded memory_size due to rounding, trim uniformly at random
+    if len(selected_indices) > memory_size:
+        selected_indices = np.random.choice(selected_indices, memory_size, replace=False).tolist()
+
+    updated_memory = {
+        "data": [combined_data[i] for i in selected_indices],
+        "labels": [combined_labels[i] for i in selected_indices]
+    }
+
     return updated_memory

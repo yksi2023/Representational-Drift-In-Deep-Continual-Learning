@@ -83,12 +83,14 @@ def replay_train(model, train_set, criterion, optimizer, device, epochs, memory_
     new_labels = []
     
     # Sample from current task data to add to memory
-    # Calculate how many samples to add per class in current task
+    # Calculate how many samples to add per class in current task (projected class-balanced quota)
     current_task_classes = set()
     for _, label in train_set:
         current_task_classes.add(label)
-    
-    samples_per_class = max(1, memory_size // len(current_task_classes))
+
+    seen_labels_set = set(memory_set["labels"]) if len(memory_set["labels"]) > 0 else set()
+    total_classes = len(seen_labels_set.union(current_task_classes)) if len(current_task_classes) > 0 else max(1, len(seen_labels_set))
+    samples_per_class = max(1, memory_size // max(1, total_classes))
     
     # Sample data from current task
     for class_label in current_task_classes:
