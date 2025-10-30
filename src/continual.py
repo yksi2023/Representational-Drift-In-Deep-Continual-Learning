@@ -60,11 +60,9 @@ def incremental_learning(model,
             # Save comprehensive checkpoint
             task_idx = i//increment + 1
             save_training_checkpoint(
-                model, optimizer, save_dir, task_idx, epochs, training_params,
+                model, save_dir, task_idx, training_params,
                 extra_metadata={
-                    "method": method,
-                    "classes": list(range(i, i+increment)),
-                    "task_description": f"Task {task_idx} - Classes {list(range(i, i+increment))}"
+                    "classes": f'{i}-{i+increment-1}',
                 }
             )
             

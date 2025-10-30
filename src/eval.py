@@ -73,7 +73,7 @@ def comprehensive_evaluation(
         task_loss, task_accuracy = evaluate(model, test_loader, criterion, device)
         
         results[f"task_{task_num}"] = {
-            "classes": task_classes,
+            "classes": f'{task_classes[0]}-{task_classes[-1]}',
             "loss": task_loss,
             "accuracy": task_accuracy,
             "num_samples": len(test_loader.dataset)

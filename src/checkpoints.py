@@ -38,10 +38,8 @@ def save_model(
 
 def save_training_checkpoint(
     model: torch.nn.Module,
-    optimizer: torch.optim.Optimizer,  # 保留接口方便，但不再用它
     save_dir: str,
     task_idx: int,
-    epoch: int,
     training_params: Dict[str, Any],
     extra_metadata: Optional[Dict[str, Any]] = None,
 ) -> str:
@@ -54,10 +52,7 @@ def save_training_checkpoint(
 
     #  只保留 JSON 兼容信息
     metadata: Dict[str, Any] = {
-        "task_idx": task_idx,
-        "epoch": epoch,
         "training_params": training_params,
-        "model_architecture": str(model),
     }
     if extra_metadata:
         metadata.update(extra_metadata)
