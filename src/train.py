@@ -1,10 +1,10 @@
 import tqdm
 from src.eval import evaluate
-from src.utils import add_heads, update_memory
+from src.utils import add_heads, update_memory, EarlyStopping
 import torch
 import random
 
-def normal_train(model, train_loader, criterion, optimizer, device, epochs, val_loader=None):
+def normal_train(model, train_loader, criterion, optimizer, device, epochs, val_loader=None, early_stopping: EarlyStopping = None):
     model.train()
     
     for epoch in range(epochs):
@@ -24,8 +24,22 @@ def normal_train(model, train_loader, criterion, optimizer, device, epochs, val_
         epoch_loss = running_loss / len(train_loader)
         print(f"Epoch [{epoch+1}/{epochs}], Loss: {epoch_loss:.4f}")
 
+        # Validation and early stopping
+        if val_loader is not None:
+            val_loss, val_acc = evaluate(model, val_loader, criterion, device)
+            print(f"Validation - Loss: {val_loss:.4f}, Acc: {val_acc:.2f}%")
+            if early_stopping is not None:
+                should_stop = early_stopping.step(model, val_loss)
+                if should_stop:
+                    print(f"Early stopping triggered at epoch {epoch+1}")
+                    break
 
-def replay_train(model, train_set, criterion, optimizer, device, epochs, memory_set, memory_size, batch_size=64):
+    # Optionally restore best weights
+    if val_loader is not None and early_stopping is not None:
+        early_stopping.restore(model)
+
+
+def replay_train(model, train_set, criterion, optimizer, device, epochs, memory_set, memory_size, batch_size=64, val_loader=None, early_stopping: EarlyStopping = None):
     model.train()
     
     # Handle empty memory case
@@ -77,6 +91,20 @@ def replay_train(model, train_set, criterion, optimizer, device, epochs, memory_
             progress_bar.set_postfix(loss = running_loss / (progress_bar.n + 1))
         epoch_loss = running_loss / len(combined_loader)
         print(f"Epoch [{epoch+1}/{epochs}], Loss: {epoch_loss:.4f}")
+
+        # Validation and early stopping
+        if val_loader is not None:
+            val_loss, val_acc = evaluate(model, val_loader, criterion, device)
+            print(f"Validation - Loss: {val_loss:.4f}, Acc: {val_acc:.2f}%")
+            if early_stopping is not None:
+                should_stop = early_stopping.step(model, val_loss)
+                if should_stop:
+                    print(f"Early stopping triggered at epoch {epoch+1}")
+                    break
+
+    # Optionally restore best weights for replay
+    if val_loader is not None and early_stopping is not None:
+        early_stopping.restore(model)
     
     # Update memory set after training
     new_data = []

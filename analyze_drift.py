@@ -36,7 +36,7 @@ def main():
 
     # Build a probe dataset (use a fixed subset from all classes)
     
-    probe_loader = data_manager.get_loader(mode="test", label=range(10), batch_size=args.batch_size, shuffle=False)
+    probe_loader = data_manager.get_loader(mode="test", label=range(10), batch_size=args.batch_size)
 
      # final head size doesn't affect hidden layers we hook
     model.to(device)

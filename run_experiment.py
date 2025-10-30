@@ -18,12 +18,16 @@ def main():
     parser.add_argument("--save_dir", type=str, default="experiments/fashion_mnist_incremental")
     parser.add_argument("--dataset", type=str, default="fashion_mnist", choices=["fashion_mnist", "tiny_imagenet"])
     parser.add_argument("--no_comprehensive_eval", action="store_true", help="Skip comprehensive evaluation after training")
+    parser.add_argument("--patience", type=int, default=5, help="Early stopping patience")
+    parser.add_argument("--min_delta", type=float, default=0.0, help="Minimum improvement in val loss to reset patience")
+    parser.add_argument("--val_ratio", type=float, default=0.1, help="Validation split ratio for FashionMNIST")
+    parser.add_argument("--no_validation", action="store_true", help="Disable validation/early stopping")
     args = parser.parse_args()
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     if args.dataset == "fashion_mnist":
-        data_manager = IncrementalFashionMNIST()
+        data_manager = IncrementalFashionMNIST(val_ratio=args.val_ratio)
         model = FashionMNISTModel()
         num_classes = 10
         
@@ -48,11 +52,13 @@ def main():
         criterion=criterion,
         optimizer=optimizer,
         batch_size=args.batch_size,
-        val_loader=None,
         method=args.method,
         memory_size=args.memory_size,
         save_dir=args.save_dir,
         run_comprehensive_eval=not args.no_comprehensive_eval,
+        early_stopping_patience=args.patience,
+        early_stopping_min_delta=args.min_delta,
+        use_validation=not args.no_validation,
     )
 
 

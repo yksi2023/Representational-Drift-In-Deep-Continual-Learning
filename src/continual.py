@@ -1,6 +1,6 @@
 import torch
 from src.train import normal_train, replay_train
-from src.utils import add_heads
+from src.utils import add_heads, EarlyStopping
 from src.eval import evaluate, comprehensive_evaluation
 import os
 from src.checkpoints import save_training_checkpoint
@@ -18,7 +18,10 @@ def incremental_learning(model,
      method='normal',
      memory_size=5000, 
      save_dir: str = "experiments/ckpts", 
-     run_comprehensive_eval=True):
+     run_comprehensive_eval=True,
+     early_stopping_patience: int = 5,
+     early_stopping_min_delta: float = 0.0,
+     use_validation: bool = True):
     """
     Train the model incrementally on new tasks.
 
@@ -51,11 +54,18 @@ def incremental_learning(model,
             print(f"TASK {i//increment + 1}: Training on classes {list(range(i, i+increment))}")
             print(f"{'='*60}")
             
-            train_loader = experiment_dataset.get_loader(mode='train', label=range(i, i+increment))
-            test_loader = experiment_dataset.get_loader(mode='test', label=range(i, i+increment))
+            train_loader = experiment_dataset.get_loader(mode='train', label=range(i, i+increment), batch_size=batch_size)
+            test_loader = experiment_dataset.get_loader(mode='test', label=range(i, i+increment), batch_size=batch_size)
+            current_val_loader = None
+            if use_validation:
+                try:
+                    current_val_loader = experiment_dataset.get_loader(mode='val', label=range(i, i+increment), batch_size=batch_size)
+                except Exception:
+                    current_val_loader = None
             
-            # Train the model
-            normal_train(model, train_loader, criterion, optimizer, device, epochs)
+            # Train the model (with optional validation and early stopping)
+            early_stopper = EarlyStopping(patience=early_stopping_patience, min_delta=early_stopping_min_delta)
+            normal_train(model, train_loader, criterion, optimizer, device, epochs, val_loader=current_val_loader, early_stopping=early_stopper)
 
             # Save comprehensive checkpoint
             task_idx = i//increment + 1
@@ -81,20 +91,24 @@ def incremental_learning(model,
             print(f"{'='*60}")
             
             train_set = experiment_dataset.get_set(mode='train',label=range(i, i+increment))
-            test_loader = experiment_dataset.get_loader(mode='test',label=range(i, i+increment))
+            test_loader = experiment_dataset.get_loader(mode='test',label=range(i, i+increment), batch_size=batch_size)
+            current_val_loader = None
+            if use_validation:
+                try:
+                    current_val_loader = experiment_dataset.get_loader(mode='val', label=range(i, i+increment), batch_size=batch_size)
+                except Exception:
+                    current_val_loader = None
             
             # Update memory_set with the returned value from replay_train
-            memory_set = replay_train(model, train_set, criterion, optimizer, device, epochs, memory_set, memory_size, batch_size)
+            early_stopper = EarlyStopping(patience=early_stopping_patience, min_delta=early_stopping_min_delta)
+            memory_set = replay_train(model, train_set, criterion, optimizer, device, epochs, memory_set, memory_size, batch_size, val_loader=current_val_loader, early_stopping=early_stopper)
     
             # Save comprehensive checkpoint
             task_idx = i//increment + 1
             save_training_checkpoint(
-                model, optimizer, save_dir, task_idx, epochs, training_params,
+                model, save_dir, task_idx, training_params,
                 extra_metadata={
-                    "method": method,
-                    "classes": list(range(i, i+increment)),
-                    "task_description": f"Task {task_idx} - Classes {list(range(i, i+increment))}",
-                    "memory_size": memory_size
+                    "classes": f'{i}-{i+increment-1}',
                 }
             )
             
