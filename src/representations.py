@@ -39,6 +39,7 @@ def extract_representations(
     layer_names: List[str],
     device: Optional[torch.device] = None,
     max_batches: Optional[int] = None,
+    use_amp: bool = False,
 ) -> Dict[str, torch.Tensor]:
     """Run data through the model and collect activations from specified layers.
 
@@ -52,8 +53,12 @@ def extract_representations(
 
     try:
         for batch_idx, (inputs, _labels) in enumerate(dataloader):
-            inputs = inputs.to(device)
-            _ = model(inputs)
+            inputs = inputs.to(device, non_blocking=True)
+            if use_amp and (device.type == 'cuda'):
+                with torch.cuda.amp.autocast():
+                    _ = model(inputs)
+            else:
+                _ = model(inputs)
             for ln in layer_names:
                 if ln in activations:
                     collected[ln].append(activations[ln])

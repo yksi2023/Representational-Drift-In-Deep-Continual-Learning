@@ -22,9 +22,25 @@ def main():
     parser.add_argument("--min_delta", type=float, default=0.0, help="Minimum improvement in val loss to reset patience")
     parser.add_argument("--val_ratio", type=float, default=0.1, help="Validation split ratio for FashionMNIST")
     parser.add_argument("--no_validation", action="store_true", help="Disable validation/early stopping")
+    parser.add_argument("--amp", action="store_true", help="Use mixed precision (AMP) on CUDA")
+    parser.add_argument("--compile", action="store_true", help="Compile model with torch.compile (PyTorch 2.x)")
+    parser.add_argument("--channels_last", action="store_true", help="Use channels_last memory format for CNNs")
     args = parser.parse_args()
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    # Backend optimizations
+    if device.type == "cuda":
+        try:
+            torch.backends.cudnn.benchmark = True
+            torch.backends.cuda.matmul.allow_tf32 = True
+            torch.backends.cudnn.allow_tf32 = True
+        except Exception:
+            pass
+        try:
+            # PyTorch 2.x matmul precision hint
+            torch.set_float32_matmul_precision("high")
+        except Exception:
+            pass
 
     if args.dataset == "fashion_mnist":
         data_manager = IncrementalFashionMNIST(val_ratio=args.val_ratio)
@@ -59,6 +75,9 @@ def main():
         early_stopping_patience=args.patience,
         early_stopping_min_delta=args.min_delta,
         use_validation=not args.no_validation,
+        use_amp=args.amp,
+        compile_model=args.compile,
+        channels_last=args.channels_last,
     )
 
 

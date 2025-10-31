@@ -3,24 +3,38 @@ from src.eval import evaluate
 from src.utils import add_heads, update_memory, EarlyStopping
 import torch
 import random
+import os
 
-def normal_train(model, train_loader, criterion, optimizer, device, epochs, val_loader=None, early_stopping: EarlyStopping = None):
+def normal_train(model, train_loader, criterion, optimizer, device, epochs, val_loader=None, early_stopping: EarlyStopping = None, use_amp: bool = False):
     model.train()
-    
+
+    use_cuda_amp = bool(use_amp and (device.type == 'cuda'))
+    scaler = torch.cuda.amp.GradScaler() if use_cuda_amp else None
+
     for epoch in range(epochs):
         running_loss = 0.0
         progress_bar = tqdm.tqdm(train_loader, desc=f"Epoch {epoch+1}/{epochs}")
         for inputs, labels in progress_bar:
-            inputs, labels = inputs.to(device), labels.to(device)
+            inputs = inputs.to(device, non_blocking=True)
+            labels = labels.to(device, non_blocking=True)
 
-            optimizer.zero_grad()
-    
-            outputs = model(inputs)
-            loss = criterion(outputs, labels)
-            loss.backward()
-            optimizer.step()
+            optimizer.zero_grad(set_to_none=True)
+
+            if use_cuda_amp:
+                with torch.cuda.amp.autocast():
+                    outputs = model(inputs)
+                    loss = criterion(outputs, labels)
+                scaler.scale(loss).backward()
+                scaler.step(optimizer)
+                scaler.update()
+            else:
+                outputs = model(inputs)
+                loss = criterion(outputs, labels)
+                loss.backward()
+                optimizer.step()
+
             running_loss += loss.item()
-            progress_bar.set_postfix(loss = running_loss / (progress_bar.n + 1))
+            progress_bar.set_postfix(loss=running_loss / (progress_bar.n + 1))
         epoch_loss = running_loss / len(train_loader)
         print(f"Epoch [{epoch+1}/{epochs}], Loss: {epoch_loss:.4f}")
 
@@ -39,56 +53,85 @@ def normal_train(model, train_loader, criterion, optimizer, device, epochs, val_
         early_stopping.restore(model)
 
 
-def replay_train(model, train_set, criterion, optimizer, device, epochs, memory_set, memory_size, batch_size=64, val_loader=None, early_stopping: EarlyStopping = None):
+def replay_train(model, train_set, criterion, optimizer, device, epochs, memory_set, memory_size, batch_size=64, val_loader=None, early_stopping: EarlyStopping = None, use_amp: bool = False):
     model.train()
-    
+
+    use_cuda_amp = bool(use_amp and (device.type == 'cuda'))
+    scaler = torch.cuda.amp.GradScaler() if use_cuda_amp else None
+
+    # dataloader perf defaults
+    use_cuda = torch.cuda.is_available()
+    cpu_count = os.cpu_count() or 2
+    num_workers = max(2, min(8, cpu_count // 2))
+    loader_kwargs = {
+        "batch_size": batch_size,
+        "shuffle": True,
+        "pin_memory": use_cuda,
+    }
+    if num_workers > 0:
+        loader_kwargs.update({
+            "num_workers": num_workers,
+            "persistent_workers": True,
+            "prefetch_factor": 2,
+        })
+
     # Handle empty memory case
     if len(memory_set["data"]) == 0:
         print("No memory samples available, training only on current task data")
-        combined_loader = torch.utils.data.DataLoader(train_set, batch_size=batch_size, shuffle=True)
+        combined_loader = torch.utils.data.DataLoader(train_set, **loader_kwargs)
     else:
         # Create memory dataset - ensure all data tensors have the same shape
         try:
             # Stack memory data and convert labels to tensor
             memory_data_tensor = torch.stack(memory_set["data"])
             memory_labels_tensor = torch.tensor(memory_set["labels"], dtype=torch.long)
-            
+
             # Create a custom dataset class that matches the format of train_set
             class MemoryDataset(torch.utils.data.Dataset):
                 def __init__(self, data_tensor, labels_tensor):
                     self.data = data_tensor
                     self.labels = labels_tensor
-                
+
                 def __len__(self):
                     return len(self.data)
-                
+
                 def __getitem__(self, idx):
                     return self.data[idx], self.labels[idx].item()  # Return as tuple like train_set
-            
+
             memory_dataset = MemoryDataset(memory_data_tensor, memory_labels_tensor)
             combined_dataset = torch.utils.data.ConcatDataset([train_set, memory_dataset])
-            combined_loader = torch.utils.data.DataLoader(combined_dataset, batch_size=batch_size, shuffle=True)
+            combined_loader = torch.utils.data.DataLoader(combined_dataset, **loader_kwargs)
         except Exception as e:
             print(f"Error creating memory dataset: {e}")
             print(f"Memory data shapes: {[d.shape for d in memory_set['data'][:5]]}")
             print(f"Memory labels: {memory_set['labels'][:10]}")
             # Fallback to training only on current task
-            combined_loader = torch.utils.data.DataLoader(train_set, batch_size=batch_size, shuffle=True)
-    
+            combined_loader = torch.utils.data.DataLoader(train_set, **loader_kwargs)
+
     for epoch in range(epochs):
         running_loss = 0.0
         progress_bar = tqdm.tqdm(combined_loader, desc=f"Epoch {epoch+1}/{epochs}")
         for inputs, labels in progress_bar:
-            inputs, labels = inputs.to(device), labels.to(device)
+            inputs = inputs.to(device, non_blocking=True)
+            labels = labels.to(device, non_blocking=True)
 
-            optimizer.zero_grad()
-    
-            outputs = model(inputs)
-            loss = criterion(outputs, labels)
-            loss.backward()
-            optimizer.step()
+            optimizer.zero_grad(set_to_none=True)
+
+            if use_cuda_amp:
+                with torch.cuda.amp.autocast():
+                    outputs = model(inputs)
+                    loss = criterion(outputs, labels)
+                scaler.scale(loss).backward()
+                scaler.step(optimizer)
+                scaler.update()
+            else:
+                outputs = model(inputs)
+                loss = criterion(outputs, labels)
+                loss.backward()
+                optimizer.step()
+
             running_loss += loss.item()
-            progress_bar.set_postfix(loss = running_loss / (progress_bar.n + 1))
+            progress_bar.set_postfix(loss=running_loss / (progress_bar.n + 1))
         epoch_loss = running_loss / len(combined_loader)
         print(f"Epoch [{epoch+1}/{epochs}], Loss: {epoch_loss:.4f}")
 
@@ -105,11 +148,11 @@ def replay_train(model, train_set, criterion, optimizer, device, epochs, memory_
     # Optionally restore best weights for replay
     if val_loader is not None and early_stopping is not None:
         early_stopping.restore(model)
-    
+
     # Update memory set after training
     new_data = []
     new_labels = []
-    
+
     # Sample from current task data to add to memory
     # Calculate how many samples to add per class in current task (projected class-balanced quota)
     current_task_classes = set()
@@ -119,7 +162,7 @@ def replay_train(model, train_set, criterion, optimizer, device, epochs, memory_
     seen_labels_set = set(memory_set["labels"]) if len(memory_set["labels"]) > 0 else set()
     total_classes = len(seen_labels_set.union(current_task_classes)) if len(current_task_classes) > 0 else max(1, len(seen_labels_set))
     samples_per_class = max(1, memory_size // max(1, total_classes))
-    
+
     # Sample data from current task
     for class_label in current_task_classes:
         class_indices = [i for i, (_, label) in enumerate(train_set) if label == class_label]
@@ -127,7 +170,7 @@ def replay_train(model, train_set, criterion, optimizer, device, epochs, memory_
             # Sample up to samples_per_class from this class
             num_samples = min(samples_per_class, len(class_indices))
             selected_indices = random.sample(class_indices, num_samples)
-            
+
             for idx in selected_indices:
                 data, label = train_set[idx]
                 # Ensure data is a tensor and label is an integer
@@ -136,11 +179,11 @@ def replay_train(model, train_set, criterion, optimizer, device, epochs, memory_
                 else:
                     new_data.append(torch.tensor(data).cpu())
                 new_labels.append(int(label))
-    
+
     # Update memory with new samples
     updated_memory = update_memory(memory_set, new_data, new_labels, memory_size)
     print(f"Memory updated: {len(updated_memory['data'])} total samples")
-    
+
     # Debug information
-    
+
     return updated_memory

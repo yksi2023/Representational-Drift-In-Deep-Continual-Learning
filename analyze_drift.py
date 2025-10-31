@@ -20,6 +20,7 @@ def main():
     parser.add_argument("--max_batches", type=int, default=10)
     parser.add_argument("--output", type=str, default=None)
     parser.add_argument("--dataset", type=str, default="fashion_mnist", choices=["fashion_mnist", "tiny_imagenet"])
+    parser.add_argument("--amp", action="store_true", help="Use mixed precision (AMP) on CUDA for forward passes")
     args = parser.parse_args()
 
     if args.dataset == "fashion_mnist":
@@ -32,6 +33,13 @@ def main():
         raise ValueError("Invalid dataset")
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    if device.type == "cuda":
+        try:
+            torch.backends.cudnn.benchmark = True
+            torch.backends.cuda.matmul.allow_tf32 = True
+            torch.backends.cudnn.allow_tf32 = True
+        except Exception:
+            pass
     layer_names: List[str] = [s.strip() for s in args.layers.split(",") if s.strip()]
 
     # Build a probe dataset (use a fixed subset from all classes)
@@ -49,7 +57,7 @@ def main():
     reps_per_task = {}
     for task_idx, _path in ckpts.items():
         load_model(model, args.ckpt_dir, task_idx, map_location=device)
-        reps = extract_representations(model, probe_loader, layer_names, device=device, max_batches=args.max_batches)
+        reps = extract_representations(model, probe_loader, layer_names, device=device, max_batches=args.max_batches, use_amp=args.amp)
         reps_per_task[task_idx] = {k: v.clone() for k, v in reps.items()}
 
     # Compute pairwise drift w.r.t. the first checkpoint as baseline

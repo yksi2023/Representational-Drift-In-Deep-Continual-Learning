@@ -21,7 +21,10 @@ def incremental_learning(model,
      run_comprehensive_eval=True,
      early_stopping_patience: int = 5,
      early_stopping_min_delta: float = 0.0,
-     use_validation: bool = True):
+     use_validation: bool = True,
+     use_amp: bool = False,
+     compile_model: bool = False,
+     channels_last: bool = False):
     """
     Train the model incrementally on new tasks.
 
@@ -38,6 +41,25 @@ def incremental_learning(model,
         method: Training method to use ('normal' or 'replay').
         run_comprehensive_eval: Whether to run comprehensive evaluation after all tasks.
     """
+    # Backend/runtime optimizations
+    if device.type == 'cuda':
+        try:
+            torch.backends.cudnn.benchmark = True
+            torch.backends.cuda.matmul.allow_tf32 = True
+            torch.backends.cudnn.allow_tf32 = True
+        except Exception:
+            pass
+    if channels_last:
+        try:
+            model.to(memory_format=torch.channels_last)
+        except Exception:
+            pass
+    if compile_model:
+        try:
+            model = torch.compile(model)
+        except Exception:
+            print("torch.compile not available or failed; continuing without compilation.")
+
     # Training parameters for checkpoint saving
     training_params = {
         "epochs": epochs,
@@ -65,7 +87,7 @@ def incremental_learning(model,
             
             # Train the model (with optional validation and early stopping)
             early_stopper = EarlyStopping(patience=early_stopping_patience, min_delta=early_stopping_min_delta)
-            normal_train(model, train_loader, criterion, optimizer, device, epochs, val_loader=current_val_loader, early_stopping=early_stopper)
+            normal_train(model, train_loader, criterion, optimizer, device, epochs, val_loader=current_val_loader, early_stopping=early_stopper, use_amp=use_amp)
 
             # Save comprehensive checkpoint
             task_idx = i//increment + 1
@@ -101,7 +123,7 @@ def incremental_learning(model,
             
             # Update memory_set with the returned value from replay_train
             early_stopper = EarlyStopping(patience=early_stopping_patience, min_delta=early_stopping_min_delta)
-            memory_set = replay_train(model, train_set, criterion, optimizer, device, epochs, memory_set, memory_size, batch_size, val_loader=current_val_loader, early_stopping=early_stopper)
+            memory_set = replay_train(model, train_set, criterion, optimizer, device, epochs, memory_set, memory_size, batch_size, val_loader=current_val_loader, early_stopping=early_stopper, use_amp=use_amp)
     
             # Save comprehensive checkpoint
             task_idx = i//increment + 1

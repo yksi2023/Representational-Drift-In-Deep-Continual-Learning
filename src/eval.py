@@ -8,9 +8,10 @@ def evaluate(model, test_loader, criterion, device):
     correct = 0
     total = 0
 
-    with torch.no_grad():
+    with torch.inference_mode():
         for inputs, labels in test_loader:
-            inputs, labels = inputs.to(device), labels.to(device)
+            inputs = inputs.to(device, non_blocking=True)
+            labels = labels.to(device, non_blocking=True)
             outputs = model(inputs)
             loss = criterion(outputs, labels)
             total_loss += loss.item()

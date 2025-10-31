@@ -1,4 +1,5 @@
 import torch 
+import os
 from torch.utils.data import Dataset
 from torchvision import datasets, transforms
 
@@ -32,6 +33,8 @@ class IncrementalFashionMNIST:
             self.train_set = full_train
             # Use an empty subset for validation if disabled
             self.val_set = torch.utils.data.Subset(full_train, [])
+        # cache for subsets by (mode, labels)
+        self._cache_indices = {"train": {}, "test": {}, "val": {}}
     def get_set(self, mode, label):
         if mode == 'train':
             data = self.train_set
@@ -42,9 +45,19 @@ class IncrementalFashionMNIST:
         else:
             raise ValueError("Mode should be 'train' or 'test'")
 
+        # normalize labels into a sorted tuple key for caching
+        try:
+            label_key = tuple(sorted(int(x) for x in label))
+        except TypeError:
+            label_key = (int(label),)
+
+        cache = self._cache_indices[mode]
+        if label_key in cache:
+            return cache[label_key]
+
         indices = [i for i, (_, lbl) in enumerate(data) if lbl in label]
         subset = torch.utils.data.Subset(data, indices)
-        
+        cache[label_key] = subset
 
         return subset
     def get_loader(self, mode, label, batch_size=64, shuffle=True):
@@ -53,7 +66,24 @@ class IncrementalFashionMNIST:
             shuffle = False
         else:
             shuffle = True
-        loader = torch.utils.data.DataLoader(subset, batch_size=batch_size, shuffle=shuffle)
+
+        # dataloader performance defaults
+        use_cuda = torch.cuda.is_available()
+        cpu_count = os.cpu_count() or 2
+        num_workers = max(2, min(8, cpu_count // 2))
+        loader_kwargs = {
+            "batch_size": batch_size,
+            "shuffle": shuffle,
+            "pin_memory": use_cuda,
+        }
+        if num_workers > 0:
+            loader_kwargs.update({
+                "num_workers": num_workers,
+                "persistent_workers": True,
+                "prefetch_factor": 2,
+            })
+
+        loader = torch.utils.data.DataLoader(subset, **loader_kwargs)
         return loader
 
 class IncrementalTinyImageNet:
@@ -80,7 +110,8 @@ class IncrementalTinyImageNet:
                                                     transforms.ToTensor()
                                                 ])
                                         )
-       
+        # cache for subsets by (mode, labels)
+        self._cache_indices = {"train": {}, "test": {}, "val": {}}
     
 
     def get_set(self, mode, label):
@@ -93,8 +124,19 @@ class IncrementalTinyImageNet:
         else:
             raise ValueError("Mode should be 'train' or 'test'")
 
+        # normalize labels into a sorted tuple key for caching
+        try:
+            label_key = tuple(sorted(int(x) for x in label))
+        except TypeError:
+            label_key = (int(label),)
+
+        cache = self._cache_indices[mode]
+        if label_key in cache:
+            return cache[label_key]
+
         indices = [i for i, (_, lbl) in enumerate(data) if lbl in label]
         subset = torch.utils.data.Subset(data, indices)
+        cache[label_key] = subset
         
         return subset
 
@@ -104,6 +146,21 @@ class IncrementalTinyImageNet:
             shuffle = False
         else:
             shuffle = True
-        loader = torch.utils.data.DataLoader(subset, batch_size=batch_size, shuffle=shuffle)
+        # dataloader performance defaults
+        use_cuda = torch.cuda.is_available()
+        cpu_count = os.cpu_count() or 2
+        num_workers = max(2, min(8, cpu_count // 2))
+        loader_kwargs = {
+            "batch_size": batch_size,
+            "shuffle": shuffle,
+            "pin_memory": use_cuda,
+        }
+        if num_workers > 0:
+            loader_kwargs.update({
+                "num_workers": num_workers,
+                "persistent_workers": True,
+                "prefetch_factor": 2,
+            })
+        loader = torch.utils.data.DataLoader(subset, **loader_kwargs)
         return loader
     
