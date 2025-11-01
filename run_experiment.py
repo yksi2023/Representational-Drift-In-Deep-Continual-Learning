@@ -12,6 +12,7 @@ def main():
     parser.add_argument("--epochs", type=int, default=1)
     parser.add_argument("--batch_size", type=int, default=64)
     parser.add_argument("--lr", type=float, default=0.01)
+    parser.add_argument("--optimizer", type=str, default="sgd", choices=["sgd", "adam"])
     parser.add_argument("--momentum", type=float, default=0.9)
     parser.add_argument("--method", type=str, default="normal", choices=["normal", "replay"]) 
     parser.add_argument("--memory_size", type=int, default=5000)
@@ -32,8 +33,9 @@ def main():
     if device.type == "cuda":
         try:
             torch.backends.cudnn.benchmark = True
-            torch.backends.cuda.matmul.allow_tf32 = True
-            torch.backends.cudnn.allow_tf32 = True
+            torch.backends.cudnn.conv.fp32_precision = 'tf32'
+            torch.backends.cuda.matmul.fp32_precision = 'tf32'
+
         except Exception:
             pass
         try:
@@ -56,7 +58,10 @@ def main():
     model.to(device)
     
     criterion = torch.nn.CrossEntropyLoss()
-    optimizer = torch.optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum)
+    if args.optimizer == "sgd":
+        optimizer = torch.optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum, weight_decay=5e-4)
+    elif args.optimizer == "adam":
+        optimizer =  torch.optim.Adam(model.parameters(), lr=0.001)
 
     incremental_learning(
         model,

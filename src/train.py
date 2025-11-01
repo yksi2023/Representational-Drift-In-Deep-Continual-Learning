@@ -9,7 +9,7 @@ def normal_train(model, train_loader, criterion, optimizer, device, epochs, val_
     model.train()
 
     use_cuda_amp = bool(use_amp and (device.type == 'cuda'))
-    scaler = torch.cuda.amp.GradScaler() if use_cuda_amp else None
+    scaler = torch.amp.GradScaler() if use_cuda_amp else None
 
     for epoch in range(epochs):
         running_loss = 0.0
@@ -21,16 +21,19 @@ def normal_train(model, train_loader, criterion, optimizer, device, epochs, val_
             optimizer.zero_grad(set_to_none=True)
 
             if use_cuda_amp:
-                with torch.cuda.amp.autocast():
+                with torch.amp.autocast():
                     outputs = model(inputs)
                     loss = criterion(outputs, labels)
                 scaler.scale(loss).backward()
+                scaler.unscale_(optimizer)  # 先把梯度缩放回原始值
+                torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=5.0)
                 scaler.step(optimizer)
                 scaler.update()
             else:
                 outputs = model(inputs)
                 loss = criterion(outputs, labels)
                 loss.backward()
+                torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=5.0)
                 optimizer.step()
 
             running_loss += loss.item()
@@ -57,7 +60,7 @@ def replay_train(model, train_set, criterion, optimizer, device, epochs, memory_
     model.train()
 
     use_cuda_amp = bool(use_amp and (device.type == 'cuda'))
-    scaler = torch.cuda.amp.GradScaler() if use_cuda_amp else None
+    scaler = torch.amp.GradScaler() if use_cuda_amp else None
 
     # dataloader perf defaults
     use_cuda = torch.cuda.is_available()
@@ -118,16 +121,19 @@ def replay_train(model, train_set, criterion, optimizer, device, epochs, memory_
             optimizer.zero_grad(set_to_none=True)
 
             if use_cuda_amp:
-                with torch.cuda.amp.autocast():
+                with torch.amp.autocast():
                     outputs = model(inputs)
                     loss = criterion(outputs, labels)
                 scaler.scale(loss).backward()
+                scaler.unscale_(optimizer)  # unscale the gradients to the original value
+                torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=5.0)
                 scaler.step(optimizer)
                 scaler.update()
             else:
                 outputs = model(inputs)
                 loss = criterion(outputs, labels)
                 loss.backward()
+                torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=5.0)
                 optimizer.step()
 
             running_loss += loss.item()
