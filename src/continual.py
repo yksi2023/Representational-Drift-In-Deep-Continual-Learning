@@ -13,6 +13,7 @@ def incremental_learning(model,
      increment, 
      criterion, 
      optimizer, 
+     scheduler=None,
      batch_size=64, 
      val_loader=None, 
      method='normal',
@@ -87,7 +88,7 @@ def incremental_learning(model,
             
             # Train the model (with optional validation and early stopping)
             early_stopper = EarlyStopping(patience=early_stopping_patience, min_delta=early_stopping_min_delta)
-            normal_train(model, train_loader, criterion, optimizer, device, epochs, val_loader=current_val_loader, early_stopping=early_stopper, use_amp=use_amp)
+            normal_train(model, train_loader, criterion, optimizer, device, epochs, val_loader=current_val_loader, early_stopping=early_stopper, scheduler=scheduler, use_amp=use_amp)
 
             # Save comprehensive checkpoint
             task_idx = i//increment + 1
@@ -123,7 +124,7 @@ def incremental_learning(model,
             
             # Update memory_set with the returned value from replay_train
             early_stopper = EarlyStopping(patience=early_stopping_patience, min_delta=early_stopping_min_delta)
-            memory_set = replay_train(model, train_set, criterion, optimizer, device, epochs, memory_set, memory_size, batch_size, val_loader=current_val_loader, early_stopping=early_stopper, use_amp=use_amp)
+            memory_set = replay_train(model, train_set, criterion, optimizer, device, epochs, memory_set, memory_size, batch_size, val_loader=current_val_loader, early_stopping=early_stopper, scheduler=scheduler, use_amp=use_amp)
     
             # Save comprehensive checkpoint
             task_idx = i//increment + 1

@@ -55,7 +55,7 @@ def extract_representations(
         for batch_idx, (inputs, _labels) in enumerate(dataloader):
             inputs = inputs.to(device, non_blocking=True)
             if use_amp and (device.type == 'cuda'):
-                with torch.cuda.amp.autocast():
+                with torch.amp.autocast(device_type=device.type):
                     _ = model(inputs)
             else:
                 _ = model(inputs)

@@ -106,7 +106,6 @@ class IncrementalTinyImageNet:
                                                 root="data/tiny-imagenet-200-processed/val",
                                                 transform=transforms.Compose([
                                                                                 transforms.Resize(64),
-                                                                                transforms.CenterCrop(64),
                                                                                 transforms.ToTensor(),
                                                                                 transforms.Normalize(mean=imagenet_mean, std=imagenet_std),
                                                                     ])
@@ -116,7 +115,6 @@ class IncrementalTinyImageNet:
                                                 root="data/tiny-imagenet-200-processed/test",
                                                 transform=transforms.Compose([
                                                                                 transforms.Resize(64),
-                                                                                transforms.CenterCrop(64),
                                                                                 transforms.ToTensor(),
                                                                                 transforms.Normalize(mean=imagenet_mean, std=imagenet_std),
                                                                         ])

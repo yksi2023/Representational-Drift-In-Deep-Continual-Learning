@@ -11,7 +11,7 @@ def main():
     parser.add_argument("--increment", type=int, default=2)
     parser.add_argument("--epochs", type=int, default=1)
     parser.add_argument("--batch_size", type=int, default=64)
-    parser.add_argument("--lr", type=float, default=0.01)
+    parser.add_argument("--lr", type=float, default=0.1)
     parser.add_argument("--optimizer", type=str, default="sgd", choices=["sgd", "adam"])
     parser.add_argument("--momentum", type=float, default=0.9)
     parser.add_argument("--method", type=str, default="normal", choices=["normal", "replay"]) 
@@ -63,6 +63,15 @@ def main():
     elif args.optimizer == "adam":
         optimizer =  torch.optim.Adam(model.parameters(), lr=0.001)
 
+    # Create learning rate scheduler
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+        optimizer, 
+        mode='min',           # minimize validation loss
+        factor=0.5,           # reduce LR by half
+        patience=3,           # wait 3 epochs before reducing
+        min_lr=1e-4          # minimum learning rate
+    )
+
     incremental_learning(
         model,
         data_manager,
@@ -72,6 +81,7 @@ def main():
         increment=args.increment,
         criterion=criterion,
         optimizer=optimizer,
+        scheduler=scheduler,
         batch_size=args.batch_size,
         method=args.method,
         memory_size=args.memory_size,

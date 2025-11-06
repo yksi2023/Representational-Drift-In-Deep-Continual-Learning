@@ -5,13 +5,12 @@ import torch
 import random
 import os
 
-def normal_train(model, train_loader, criterion, optimizer, device, epochs, val_loader=None, early_stopping: EarlyStopping = None, use_amp: bool = False):
-    model.train()
-
+def normal_train(model, train_loader, criterion, optimizer, device, epochs, val_loader=None, early_stopping: EarlyStopping = None, scheduler=None, use_amp: bool = False):
     use_cuda_amp = bool(use_amp and (device.type == 'cuda'))
     scaler = torch.amp.GradScaler() if use_cuda_amp else None
 
     for epoch in range(epochs):
+        model.train()
         running_loss = 0.0
         progress_bar = tqdm.tqdm(train_loader, desc=f"Epoch {epoch+1}/{epochs}")
         for inputs, labels in progress_bar:
@@ -21,11 +20,11 @@ def normal_train(model, train_loader, criterion, optimizer, device, epochs, val_
             optimizer.zero_grad(set_to_none=True)
 
             if use_cuda_amp:
-                with torch.amp.autocast():
+                with torch.amp.autocast(device_type=device.type):
                     outputs = model(inputs)
                     loss = criterion(outputs, labels)
                 scaler.scale(loss).backward()
-                scaler.unscale_(optimizer)  # 先把梯度缩放回原始值
+                scaler.unscale_(optimizer)  # unscale the gradients to the original value
                 torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=5.0)
                 scaler.step(optimizer)
                 scaler.update()
@@ -45,6 +44,13 @@ def normal_train(model, train_loader, criterion, optimizer, device, epochs, val_
         if val_loader is not None:
             val_loss, val_acc = evaluate(model, val_loader, criterion, device)
             print(f"Validation - Loss: {val_loss:.4f}, Acc: {val_acc:.2f}%")
+            
+            # Update learning rate scheduler based on validation loss
+            if scheduler is not None:
+                scheduler.step(val_loss)
+                current_lr = optimizer.param_groups[0]['lr']
+                print(f"Current LR: {current_lr:.6f}")
+            
             if early_stopping is not None:
                 should_stop = early_stopping.step(model, val_loss)
                 if should_stop:
@@ -56,7 +62,7 @@ def normal_train(model, train_loader, criterion, optimizer, device, epochs, val_
         early_stopping.restore(model)
 
 
-def replay_train(model, train_set, criterion, optimizer, device, epochs, memory_set, memory_size, batch_size=64, val_loader=None, early_stopping: EarlyStopping = None, use_amp: bool = False):
+def replay_train(model, train_set, criterion, optimizer, device, epochs, memory_set, memory_size, batch_size=64, val_loader=None, early_stopping: EarlyStopping = None, scheduler=None, use_amp: bool = False):
     model.train()
 
     use_cuda_amp = bool(use_amp and (device.type == 'cuda'))
@@ -112,6 +118,7 @@ def replay_train(model, train_set, criterion, optimizer, device, epochs, memory_
             combined_loader = torch.utils.data.DataLoader(train_set, **loader_kwargs)
 
     for epoch in range(epochs):
+        model.train()
         running_loss = 0.0
         progress_bar = tqdm.tqdm(combined_loader, desc=f"Epoch {epoch+1}/{epochs}")
         for inputs, labels in progress_bar:
@@ -121,7 +128,7 @@ def replay_train(model, train_set, criterion, optimizer, device, epochs, memory_
             optimizer.zero_grad(set_to_none=True)
 
             if use_cuda_amp:
-                with torch.amp.autocast():
+                with torch.amp.autocast(device_type=device.type):
                     outputs = model(inputs)
                     loss = criterion(outputs, labels)
                 scaler.scale(loss).backward()
@@ -145,6 +152,13 @@ def replay_train(model, train_set, criterion, optimizer, device, epochs, memory_
         if val_loader is not None:
             val_loss, val_acc = evaluate(model, val_loader, criterion, device)
             print(f"Validation - Loss: {val_loss:.4f}, Acc: {val_acc:.2f}%")
+            
+            # Update learning rate scheduler based on validation loss
+            if scheduler is not None:
+                scheduler.step(val_loss)
+                current_lr = optimizer.param_groups[0]['lr']
+                print(f"Current LR: {current_lr:.6f}")
+            
             if early_stopping is not None:
                 should_stop = early_stopping.step(model, val_loss)
                 if should_stop:
