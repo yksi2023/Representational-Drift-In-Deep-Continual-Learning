@@ -13,7 +13,7 @@ def incremental_learning(model,
      increment, 
      criterion, 
      optimizer, 
-     scheduler=None,
+     scheduler_config=None,
      batch_size=64, 
      val_loader=None, 
      method='normal',
@@ -86,9 +86,21 @@ def incremental_learning(model,
                 except Exception:
                     current_val_loader = None
             
+            # Create a new scheduler for this task
+            task_scheduler = None
+            if scheduler_config is not None:
+                if scheduler_config['type'] == 'ReduceLROnPlateau':
+                    task_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+                        optimizer,
+                        mode=scheduler_config.get('mode', 'min'),
+                        factor=scheduler_config.get('factor', 0.5),
+                        patience=scheduler_config.get('patience', 3),
+                        min_lr=scheduler_config.get('min_lr', 1e-4)
+                    )
+            
             # Train the model (with optional validation and early stopping)
             early_stopper = EarlyStopping(patience=early_stopping_patience, min_delta=early_stopping_min_delta)
-            normal_train(model, train_loader, criterion, optimizer, device, epochs, val_loader=current_val_loader, early_stopping=early_stopper, scheduler=scheduler, use_amp=use_amp)
+            normal_train(model, train_loader, criterion, optimizer, device, epochs, val_loader=current_val_loader, early_stopping=early_stopper, scheduler=task_scheduler, use_amp=use_amp)
 
             # Save comprehensive checkpoint
             task_idx = i//increment + 1
@@ -122,9 +134,21 @@ def incremental_learning(model,
                 except Exception:
                     current_val_loader = None
             
+            # Create a new scheduler for this task
+            task_scheduler = None
+            if scheduler_config is not None:
+                if scheduler_config['type'] == 'ReduceLROnPlateau':
+                    task_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+                        optimizer,
+                        mode=scheduler_config.get('mode', 'min'),
+                        factor=scheduler_config.get('factor', 0.5),
+                        patience=scheduler_config.get('patience', 3),
+                        min_lr=scheduler_config.get('min_lr', 1e-4)
+                    )
+            
             # Update memory_set with the returned value from replay_train
             early_stopper = EarlyStopping(patience=early_stopping_patience, min_delta=early_stopping_min_delta)
-            memory_set = replay_train(model, train_set, criterion, optimizer, device, epochs, memory_set, memory_size, batch_size, val_loader=current_val_loader, early_stopping=early_stopper, scheduler=scheduler, use_amp=use_amp)
+            memory_set = replay_train(model, train_set, criterion, optimizer, device, epochs, memory_set, memory_size, batch_size, val_loader=current_val_loader, early_stopping=early_stopper, scheduler=task_scheduler, use_amp=use_amp)
     
             # Save comprehensive checkpoint
             task_idx = i//increment + 1

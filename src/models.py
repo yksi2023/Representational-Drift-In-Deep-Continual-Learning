@@ -1,5 +1,6 @@
 import torch
 from torch import nn
+from torchvision import models as tv_models
 
 class FashionMNISTModel(nn.Module):
     '''A simple feedforward neural network for FashionMNIST classification.'''
@@ -78,3 +79,61 @@ class ResNet18_Tiny(nn.Module):
         x = torch.flatten(x, 1)
         x = self.fc(x)
         return x
+
+
+class PretrainedResNet18(nn.Module):
+    '''Torchvision ResNet18 pretrained on ImageNet with configurable layer freezing.'''
+    def __init__(self, num_classes, pretrained = True, freeze_layers=None, freeze_until = None):
+        super().__init__()
+        # Load backbone
+        try:
+            # Torchvision >= 0.13 uses weights API
+            weights = tv_models.ResNet18_Weights.IMAGENET1K_V1 if pretrained else None
+            backbone = tv_models.resnet18(weights=weights)
+        except Exception:
+            # Fallback for older versions
+            backbone = tv_models.resnet18(pretrained=pretrained)
+
+        in_features = backbone.fc.in_features
+        backbone.fc = nn.Linear(in_features, num_classes)
+        self.backbone = backbone
+
+        # Determine layers order for convenience
+        self._layer_order = ['conv1', 'bn1', 'layer1', 'layer2', 'layer3', 'layer4', 'fc']
+
+        # Normalize freeze configuration
+        freeze_set = set()
+        if freeze_layers:
+            if isinstance(freeze_layers, (list, tuple, set)):
+                freeze_set.update(str(x) for x in freeze_layers)
+            elif isinstance(freeze_layers, str) and freeze_layers.strip():
+                # support comma-separated
+                parts = [p.strip() for p in freeze_layers.split(',') if p.strip()]
+                freeze_set.update(parts)
+        if freeze_until:
+            if freeze_until not in self._layer_order:
+                raise ValueError(f"freeze_until must be one of {self._layer_order}, got {freeze_until}")
+            idx = self._layer_order.index(freeze_until)
+            for name in self._layer_order[:idx+1]:
+                freeze_set.add(name)
+
+        # Apply freezing
+        for name, module in self.backbone.named_children():
+            if name in freeze_set:
+                for p in module.parameters():
+                    p.requires_grad = False
+
+        # Optionally put frozen BatchNorms in eval mode during training (user can still override externally)
+        self._frozen_names = freeze_set
+
+    def train(self, mode = True):
+        super().train(mode)
+        # Keep BN layers inside frozen modules in eval mode
+        if mode and self._frozen_names:
+            for name, module in self.backbone.named_children():
+                if name in self._frozen_names:
+                    module.eval()
+        return self
+
+    def forward(self, x):
+        return self.backbone(x)

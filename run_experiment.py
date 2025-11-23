@@ -1,7 +1,7 @@
 import argparse
 import torch
 
-from src.models import FashionMNISTModel, ResNet18_Tiny
+from src.models import FashionMNISTModel, ResNet18_Tiny, PretrainedResNet18
 from src.continual import incremental_learning
 from datasets import IncrementalFashionMNIST, IncrementalTinyImageNet
 
@@ -26,6 +26,10 @@ def main():
     parser.add_argument("--amp", action="store_true", help="Use mixed precision (AMP) on CUDA")
     parser.add_argument("--compile", action="store_true", help="Compile model with torch.compile (PyTorch 2.x)")
     parser.add_argument("--channels_last", action="store_true", help="Use channels_last memory format for CNNs")
+    # Pretrained ResNet18 options (for TinyImageNet path)
+    parser.add_argument("--use_pretrained_resnet", action="store_true", help="Use torchvision ResNet18 pretrained on ImageNet")
+    parser.add_argument("--freeze_layers", type=str, default="", help="Comma-separated layer names to freeze among conv1,bn1,layer1,layer2,layer3,layer4,fc")
+    parser.add_argument("--freeze_until", type=str, default=None, choices=[None, "conv1", "bn1", "layer1", "layer2", "layer3", "layer4", "fc"], help="Freeze all layers up to and including this layer")
     args = parser.parse_args()
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -50,27 +54,36 @@ def main():
         num_classes = 10
         
     elif args.dataset == "tiny_imagenet":
-        data_manager = IncrementalTinyImageNet()
-        model = ResNet18_Tiny()
+        if args.use_pretrained_resnet:
+            model = PretrainedResNet18(
+                num_classes=200,
+                freeze_layers=args.freeze_layers,
+                freeze_until=args.freeze_until,
+            )
+            data_manager = IncrementalTinyImageNet(resize=224)
+        else:
+            model = ResNet18_Tiny()
+            data_manager = IncrementalTinyImageNet()
         num_classes = 200
     else:
         raise ValueError("Invalid dataset")
     model.to(device)
     
     criterion = torch.nn.CrossEntropyLoss()
+    trainable_params = filter(lambda p: p.requires_grad, model.parameters())
     if args.optimizer == "sgd":
-        optimizer = torch.optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum, weight_decay=5e-4)
+        optimizer = torch.optim.SGD(trainable_params, lr=args.lr, momentum=args.momentum, weight_decay=5e-4)
     elif args.optimizer == "adam":
-        optimizer =  torch.optim.Adam(model.parameters(), lr=0.001)
+        optimizer =  torch.optim.Adam(trainable_params, lr=0.001)
 
-    # Create learning rate scheduler
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-        optimizer, 
-        mode='min',           # minimize validation loss
-        factor=0.5,           # reduce LR by half
-        patience=3,           # wait 3 epochs before reducing
-        min_lr=1e-4          # minimum learning rate
-    )
+    # Scheduler configuration (will be created per task)
+    scheduler_config = {
+        'type': 'ReduceLROnPlateau',
+        'mode': 'min',           # minimize validation loss
+        'factor': 0.5,           # reduce LR by half
+        'patience': 3,           # wait 3 epochs before reducing
+        'min_lr': 1e-4          # minimum learning rate
+    }
 
     incremental_learning(
         model,
@@ -81,7 +94,7 @@ def main():
         increment=args.increment,
         criterion=criterion,
         optimizer=optimizer,
-        scheduler=scheduler,
+        scheduler_config=scheduler_config,
         batch_size=args.batch_size,
         method=args.method,
         memory_size=args.memory_size,

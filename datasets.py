@@ -88,14 +88,14 @@ class IncrementalFashionMNIST:
 
 class IncrementalTinyImageNet:
     '''Automatically create data loaders for incremental learning on TinyImageNet dataset'''
-    def __init__(self):
+    def __init__(self, resize=64):
         imagenet_mean = [0.485, 0.456, 0.406]
         imagenet_std = [0.229, 0.224, 0.225]
 
         self.train_set = datasets.ImageFolder(
                                                 root="data/tiny-imagenet-200-processed/train",
                                                 transform=transforms.Compose([
-                                                                                transforms.RandomResizedCrop(64, scale=(0.8, 1.0)),
+                                                                                transforms.RandomResizedCrop((resize,resize), scale=(0.8, 1.0)),
                                                                                 transforms.RandomHorizontalFlip(),
                                                                                 transforms.ToTensor(),
                                                                                 transforms.Normalize(mean=imagenet_mean, std=imagenet_std),
@@ -105,7 +105,7 @@ class IncrementalTinyImageNet:
         self.val_set = datasets.ImageFolder(
                                                 root="data/tiny-imagenet-200-processed/val",
                                                 transform=transforms.Compose([
-                                                                                transforms.Resize(64),
+                                                                                transforms.Resize((resize,resize)),
                                                                                 transforms.ToTensor(),
                                                                                 transforms.Normalize(mean=imagenet_mean, std=imagenet_std),
                                                                     ])
@@ -114,7 +114,7 @@ class IncrementalTinyImageNet:
         self.test_set = datasets.ImageFolder(
                                                 root="data/tiny-imagenet-200-processed/test",
                                                 transform=transforms.Compose([
-                                                                                transforms.Resize(64),
+                                                                                transforms.Resize((resize,resize)),
                                                                                 transforms.ToTensor(),
                                                                                 transforms.Normalize(mean=imagenet_mean, std=imagenet_std),
                                                                         ])

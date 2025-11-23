@@ -1,7 +1,7 @@
 import argparse
 import json
 from typing import List
-
+import os
 import torch
 from torch.utils.data import DataLoader
 
@@ -15,7 +15,7 @@ from datasets import IncrementalFashionMNIST, IncrementalTinyImageNet
 def main():
     parser = argparse.ArgumentParser(description="Analyze representational drift across checkpoints")
     parser.add_argument("--ckpt_dir", type=str, required=True)
-    parser.add_argument("--layers", type=str, default="network.0,network.2")
+    parser.add_argument("--layers", type=str, default="network.1")
     parser.add_argument("--batch_size", type=int, default=128)
     parser.add_argument("--max_batches", type=int, default=10)
     parser.add_argument("--output", type=str, default=None)
@@ -43,9 +43,10 @@ def main():
     layer_names: List[str] = [s.strip() for s in args.layers.split(",") if s.strip()]
 
     # Build a probe dataset (use a fixed subset from all classes)
-    
-    probe_loader = data_manager.get_loader(mode="test", label=range(10), batch_size=args.batch_size)
+    with open(os.path.join(args.ckpt_dir, "model_after_task_1.json"), "r", encoding="utf-8") as f:
+        increment = json.load(f)["training_params"]["increment"]
 
+    probe_loader = data_manager.get_loader(mode="test", label=range(increment), batch_size=args.batch_size)
      # final head size doesn't affect hidden layers we hook
     model.to(device)
 
@@ -54,12 +55,13 @@ def main():
         raise SystemExit(f"No checkpoints found in {args.ckpt_dir}")
 
     # Extract representations for each checkpoint
-    reps_per_task = {}
+    reps_per_task = {}   # {task_idx:{layer name: activation tensor (Sample Numbers: Features)}}
     for task_idx, _path in ckpts.items():
         load_model(model, args.ckpt_dir, task_idx, map_location=device)
         reps = extract_representations(model, probe_loader, layer_names, device=device, max_batches=args.max_batches, use_amp=args.amp)
         reps_per_task[task_idx] = {k: v.clone() for k, v in reps.items()}
 
+    # Rewrite code below here
     # Compute pairwise drift w.r.t. the first checkpoint as baseline
     baseline_idx = min(reps_per_task.keys())
     baseline = reps_per_task[baseline_idx]

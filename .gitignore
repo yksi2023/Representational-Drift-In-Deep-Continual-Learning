@@ -11,3 +11,5 @@ data/**
 *.swp
 *~
 *.json
+*.ipynb
+*.pth

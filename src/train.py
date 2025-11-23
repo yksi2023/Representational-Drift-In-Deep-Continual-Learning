@@ -12,7 +12,7 @@ def normal_train(model, train_loader, criterion, optimizer, device, epochs, val_
     for epoch in range(epochs):
         model.train()
         running_loss = 0.0
-        progress_bar = tqdm.tqdm(train_loader, desc=f"Epoch {epoch+1}/{epochs}")
+        progress_bar = tqdm.tqdm(train_loader, desc=f"Epoch {epoch+1}/{epochs}",disable=True)
         for inputs, labels in progress_bar:
             inputs = inputs.to(device, non_blocking=True)
             labels = labels.to(device, non_blocking=True)
@@ -120,7 +120,7 @@ def replay_train(model, train_set, criterion, optimizer, device, epochs, memory_
     for epoch in range(epochs):
         model.train()
         running_loss = 0.0
-        progress_bar = tqdm.tqdm(combined_loader, desc=f"Epoch {epoch+1}/{epochs}")
+        progress_bar = tqdm.tqdm(combined_loader, desc=f"Epoch {epoch+1}/{epochs}", disable=True)
         for inputs, labels in progress_bar:
             inputs = inputs.to(device, non_blocking=True)
             labels = labels.to(device, non_blocking=True)
