@@ -1,67 +1,40 @@
-from typing import Dict, Tuple
-
 import torch
+import torch.nn.functional as F
+from typing import Dict
 
-
-def mean_shift(a: torch.Tensor, b: torch.Tensor) -> float:
-    """L2 distance between feature means.
-
-    a, b: [N, D]
+def compute_metrics(a: torch.Tensor, b: torch.Tensor) -> Dict[str, float]:
     """
-    if a.numel() == 0 or b.numel() == 0:
-        return float("nan")
-    mu_a = a.mean(dim=0)
-    mu_b = b.mean(dim=0)
-    return torch.norm(mu_a - mu_b, p=2).item()
-
-
-def cosine_between_means(a: torch.Tensor, b: torch.Tensor) -> float:
-    """Cosine similarity between feature means.
-
-    Returns in [-1, 1]. Higher is more similar; drift can be 1 - cosine.
+    Compute element-wise metrics between two representations of the same samples.
+    
+    Args:
+        a: Tensor of shape [N, D] (Baseline activations)
+        b: Tensor of shape [N, D] (Current activations)
+        
+    Returns:
+        Dictionary containing mean and std of cosine similarity and L2 distance.
     """
-    if a.numel() == 0 or b.numel() == 0:
-        return float("nan")
-    mu_a = a.mean(dim=0)
-    mu_b = b.mean(dim=0)
-    denom = (mu_a.norm(p=2) * mu_b.norm(p=2)).clamp_min(1e-12)
-    return (mu_a @ mu_b / denom).item()
+    if a.size() != b.size():
+        raise ValueError(f"Shape mismatch: {a.shape} vs {b.shape}")
+    
+    if a.numel() == 0:
+        return {
+            "cosine_sim_mean": float("nan"),
+            "cosine_sim_std": float("nan"),
+            "l2_dist_mean": float("nan"),
+            "l2_dist_std": float("nan"),
+        }
 
+    # 1. Cosine Similarity (逐样本计算)
+    # dim=1 表示沿着特征维度计算，返回 shape [N]
+    cos_sim = F.cosine_similarity(a, b, dim=1, eps=1e-8)
+    
+    # 2. L2 Distance (逐样本计算)
+    # (a - b) shape [N, D] -> norm(dim=1) -> shape [N]
+    l2_dist = torch.norm(a - b, p=2, dim=1)
 
-def _center_gram(K: torch.Tensor) -> torch.Tensor:
-    n = K.size(0)
-    one_n = torch.full((n, n), 1.0 / n, device=K.device, dtype=K.dtype)
-    return K - one_n @ K - K @ one_n + one_n @ K @ one_n
-
-
-def linear_cka(a: torch.Tensor, b: torch.Tensor) -> float:
-    """Linear Centered Kernel Alignment between representations a and b.
-
-    a, b: [N, D]
-    """
-    if a.numel() == 0 or b.numel() == 0:
-        return float("nan")
-    A = a - a.mean(dim=0)
-    B = b - b.mean(dim=0)
-    Ka = A @ A.t()
-    Kb = B @ B.t()
-    Ka = _center_gram(Ka)
-    Kb = _center_gram(Kb)
-    hsic_ab = (Ka * Kb).sum()
-    hsic_aa = (Ka * Ka).sum().clamp_min(1e-12)
-    hsic_bb = (Kb * Kb).sum().clamp_min(1e-12)
-    return (hsic_ab / torch.sqrt(hsic_aa * hsic_bb)).item()
-
-
-def compute_all_metrics(a: torch.Tensor, b: torch.Tensor) -> Dict[str, float]:
-    """Convenience wrapper to compute all drift-related metrics.
-
-    Returns a dict with keys: mean_shift, cosine_between_means, linear_cka
-    """
     return {
-        "mean_shift": mean_shift(a, b),
-        "cosine_between_means": cosine_between_means(a, b),
-        "linear_cka": linear_cka(a, b),
+        "cosine_sim_mean": cos_sim.mean().item(),
+        "cosine_sim_std": cos_sim.std().item(),
+        "l2_dist_mean": l2_dist.mean().item(),
+        "l2_dist_std": l2_dist.std().item()
     }
-
-

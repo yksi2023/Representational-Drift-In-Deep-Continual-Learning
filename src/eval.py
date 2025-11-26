@@ -1,6 +1,8 @@
 import torch
 from typing import Dict, List, Tuple
 import json
+import matplotlib.pyplot as plt
+import os
 
 def evaluate(model, test_loader, criterion, device):
     model.eval()
@@ -23,9 +25,32 @@ def evaluate(model, test_loader, criterion, device):
     print(f"Test Loss: {avg_loss:.4f}, Accuracy: {accuracy:.2f}%")
     return avg_loss, accuracy
 
+def plot_performance(online_results: List[float], retrospective_results: List[float], save_dir: str = None):
+    '''Plot figures for both within-task performance and retrospective performance.'''
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 6))
+    ax1.plot(range(1,len(online_results)+1), online_results, marker='o')
+    ax2.plot(range(1,len(retrospective_results)+1), retrospective_results, marker='o')
+    ax1.set_title("Online Task Accuracy")
+    ax1.set_xlabel("Task Index")
+    ax1.set_ylabel("Accuracy")
+    ax1.set_ylim(40, 100)
+    ax1.grid(True, linestyle='--', alpha=0.6)
+    
+    ax2.set_title("Retrospective Task Accuracy")
+    ax2.set_xlabel("Task Index")
+    ax2.set_ylabel("Accuracy")
+    ax2.set_ylim(40, 100)
+    ax2.grid(True, linestyle='--', alpha=0.6)
+    
+    plt.tight_layout()
+    if save_dir:
+        os.makedirs(save_dir, exist_ok=True)
+        plt.savefig(os.path.join(save_dir, "performance.png"))
+    
 
 def comprehensive_evaluation(
     model: torch.nn.Module,
+    online_results: List[float],
     data_manager,
     device: torch.device,
     num_classes: int,
@@ -34,7 +59,7 @@ def comprehensive_evaluation(
     save_dir: str = None,
 ) -> Dict[str, Dict[str, float]]:
     """
-    Evaluate the fully trained model on all previous tasks.
+    Evaluate the fully trained model on all previous tasks. Plot figures of within-task performance and retrospective performance.
     
     Args:
         model: The fully trained model
@@ -109,5 +134,6 @@ def comprehensive_evaluation(
         with open(results_path, "w", encoding="utf-8") as f:
             json.dump(results, f, ensure_ascii=False, indent=2)
         print(f"\nResults saved to: {results_path}")
+        plot_performance(online_results, all_accuracies, save_dir)
     
     return results

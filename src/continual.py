@@ -5,7 +5,6 @@ from src.eval import evaluate, comprehensive_evaluation
 import os
 from src.checkpoints import save_training_checkpoint
 
-
 def incremental_learning(model,
      experiment_dataset, 
      epochs, device, 
@@ -71,6 +70,8 @@ def incremental_learning(model,
         "memory_size": memory_size if method == "replay" else None,
     }
     
+    online_results = []
+
     if method.lower() == "normal":
         for i in range(0, num_classes, increment):
             print(f"\n{'='*60}")
@@ -113,7 +114,8 @@ def incremental_learning(model,
             
             # Evaluate on current task
             print(f"\nEvaluating Task {task_idx}:")
-            evaluate(model, test_loader, criterion, device)
+            ls, acc = evaluate(model, test_loader, criterion, device)
+            online_results.append(acc)
 
     elif method.lower() == "replay":
         # Initialize persistent memory for replay method
@@ -161,7 +163,8 @@ def incremental_learning(model,
             
             # Evaluate on current task
             print(f"\nEvaluating Task {task_idx}:")
-            evaluate(model, test_loader, criterion, device)
+            ls, acc = evaluate(model, test_loader, criterion, device)
+            online_results.append(acc)
 
     elif method.lower() == "ewc":
         # Placeholder for EWC method implementation
@@ -173,6 +176,6 @@ def incremental_learning(model,
         print("RUNNING COMPREHENSIVE EVALUATION")
         print(f"{'='*60}")
         comprehensive_evaluation(
-            model, experiment_dataset, device, num_classes, increment, criterion, save_dir
+            model, online_results, experiment_dataset, device, num_classes, increment, criterion, save_dir
         )
 

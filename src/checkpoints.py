@@ -62,6 +62,15 @@ def save_training_checkpoint(
 
     return ckpt_path
 
+def fix_state_dict(state_dict):
+    new_state_dict = {}
+    for k, v in state_dict.items():
+        if k.startswith("_orig_mod."):
+            new_key = k[len("_orig_mod."):]  # remove prefix
+        else:
+            new_key = k
+        new_state_dict[new_key] = v
+    return new_state_dict
 
 def load_model(
     model: torch.nn.Module,
@@ -72,6 +81,7 @@ def load_model(
     """Load model state dict for a given task index into the provided model."""
     ckpt_path = _task_ckpt_path(save_dir, task_idx)
     state = torch.load(ckpt_path, map_location=map_location)
+    state = fix_state_dict(state)
     model.load_state_dict(state)
     return model
 
