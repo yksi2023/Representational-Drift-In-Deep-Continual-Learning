@@ -71,6 +71,7 @@ def incremental_learning(model,
     }
     
     online_results = []
+    first_task_results = []  # Track performance on first task after each task
 
     if method.lower() == "normal":
         for i in range(0, num_classes, increment):
@@ -116,6 +117,12 @@ def incremental_learning(model,
             print(f"\nEvaluating Task {task_idx}:")
             ls, acc = evaluate(model, test_loader, criterion, device)
             online_results.append(acc)
+            
+            # Evaluate on first task (forgetting measure)
+            first_task_test_loader = experiment_dataset.get_loader(mode='test', label=range(0, increment), batch_size=batch_size)
+            print(f"Evaluating on First Task (classes 0-{increment-1}):")
+            _, first_task_acc = evaluate(model, first_task_test_loader, criterion, device)
+            first_task_results.append(first_task_acc)
 
     elif method.lower() == "replay":
         # Initialize persistent memory for replay method
@@ -165,6 +172,12 @@ def incremental_learning(model,
             print(f"\nEvaluating Task {task_idx}:")
             ls, acc = evaluate(model, test_loader, criterion, device)
             online_results.append(acc)
+            
+            # Evaluate on first task (forgetting measure)
+            first_task_test_loader = experiment_dataset.get_loader(mode='test', label=range(0, increment), batch_size=batch_size)
+            print(f"Evaluating on First Task (classes 0-{increment-1}):")
+            _, first_task_acc = evaluate(model, first_task_test_loader, criterion, device)
+            first_task_results.append(first_task_acc)
 
     elif method.lower() == "ewc":
         # Placeholder for EWC method implementation
@@ -176,6 +189,7 @@ def incremental_learning(model,
         print("RUNNING COMPREHENSIVE EVALUATION")
         print(f"{'='*60}")
         comprehensive_evaluation(
-            model, online_results, experiment_dataset, device, num_classes, increment, criterion, save_dir
+            model, online_results, first_task_results, experiment_dataset, device, num_classes, increment, criterion, save_dir,
+           
         )
 

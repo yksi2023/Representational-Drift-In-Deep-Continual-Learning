@@ -25,9 +25,13 @@ def evaluate(model, test_loader, criterion, device):
     print(f"Test Loss: {avg_loss:.4f}, Accuracy: {accuracy:.2f}%")
     return avg_loss, accuracy
 
-def plot_performance(online_results: List[float], retrospective_results: List[float], save_dir: str = None):
-    '''Plot figures for both within-task performance and retrospective performance.'''
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 6))
+def plot_performance(online_results: List[float], retrospective_results: List[float], first_task_results: List[float], save_dir: str = None):
+    '''Plot figures for within-task performance, retrospective performance, and first task forgetting.'''
+    num_plots = 3 
+    fig, axes = plt.subplots(1, num_plots, figsize=(8 * num_plots, 6))
+    
+    ax1, ax2, ax3 = axes
+    
     ax1.plot(range(1,len(online_results)+1), online_results, marker='o')
     ax2.plot(range(1,len(retrospective_results)+1), retrospective_results, marker='o')
     ax1.set_title("Performance on the Current Task During Continual Learning")
@@ -42,6 +46,13 @@ def plot_performance(online_results: List[float], retrospective_results: List[fl
     ax2.set_ylim(0, 100)
     ax2.grid(True, linestyle='--', alpha=0.6)
     
+    ax3.plot(range(1, len(first_task_results)+1), first_task_results, marker='o', color='red')
+    ax3.set_title("Performance on First Task After Each Task Training")
+    ax3.set_xlabel("Task Index")
+    ax3.set_ylabel("Accuracy")
+    ax3.set_ylim(0, 100)
+    ax3.grid(True, linestyle='--', alpha=0.6)
+    
     plt.tight_layout()
     if save_dir:
         os.makedirs(save_dir, exist_ok=True)
@@ -51,6 +62,7 @@ def plot_performance(online_results: List[float], retrospective_results: List[fl
 def comprehensive_evaluation(
     model: torch.nn.Module,
     online_results: List[float],
+    first_task_results: List[float] ,
     data_manager,
     device: torch.device,
     num_classes: int,
@@ -134,6 +146,6 @@ def comprehensive_evaluation(
         with open(results_path, "w", encoding="utf-8") as f:
             json.dump(results, f, ensure_ascii=False, indent=2)
         print(f"\nResults saved to: {results_path}")
-        plot_performance(online_results, all_accuracies, save_dir)
+        plot_performance(online_results,  all_accuracies,  first_task_results, save_dir)
     
     return results
