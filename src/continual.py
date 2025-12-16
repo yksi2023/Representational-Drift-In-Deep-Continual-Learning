@@ -24,7 +24,8 @@ def incremental_learning(model,
      use_validation: bool = True,
      use_amp: bool = False,
      compile_model: bool = False,
-     channels_last: bool = False):
+     channels_last: bool = False,
+     first_task_only_memory: bool = False):
     """
     Train the model incrementally on new tasks.
 
@@ -68,6 +69,7 @@ def incremental_learning(model,
         "num_classes": num_classes,
         "increment": increment,
         "memory_size": memory_size if method == "replay" else None,
+        "first_task_only_memory": first_task_only_memory if method == "replay" else None,
     }
     
     online_results = []
@@ -157,7 +159,8 @@ def incremental_learning(model,
             
             # Update memory_set with the returned value from replay_train
             early_stopper = EarlyStopping(patience=early_stopping_patience, min_delta=early_stopping_min_delta)
-            memory_set = replay_train(model, train_set, criterion, optimizer, device, epochs, memory_set, memory_size, batch_size, val_loader=current_val_loader, early_stopping=early_stopper, scheduler=task_scheduler, use_amp=use_amp)
+            is_first_task = (i == 0)
+            memory_set = replay_train(model, train_set, criterion, optimizer, device, epochs, memory_set, memory_size, batch_size, val_loader=current_val_loader, early_stopping=early_stopper, scheduler=task_scheduler, use_amp=use_amp, first_task_only_memory=first_task_only_memory, is_first_task=is_first_task)
     
             # Save comprehensive checkpoint
             task_idx = i//increment + 1

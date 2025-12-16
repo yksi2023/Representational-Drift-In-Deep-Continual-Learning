@@ -16,6 +16,7 @@ def main():
     parser.add_argument("--momentum", type=float, default=0.9)
     parser.add_argument("--method", type=str, default="normal", choices=["normal", "replay"]) 
     parser.add_argument("--memory_size", type=int, default=5000)
+    parser.add_argument("--first_task_only_memory", action="store_true", help="Only keep first task data in memory, do not add subsequent task data")
     parser.add_argument("--save_dir", type=str, default="experiments/fashion_mnist_incremental")
     parser.add_argument("--dataset", type=str, default="fashion_mnist", choices=["fashion_mnist", "tiny_imagenet"])
     parser.add_argument("--no_comprehensive_eval", action="store_true", help="Skip comprehensive evaluation after training")
@@ -98,6 +99,7 @@ def main():
         batch_size=args.batch_size,
         method=args.method,
         memory_size=args.memory_size,
+        first_task_only_memory=args.first_task_only_memory,
         save_dir=args.save_dir,
         run_comprehensive_eval=not args.no_comprehensive_eval,
         early_stopping_patience=args.patience,
@@ -106,6 +108,7 @@ def main():
         use_amp=args.amp,
         compile_model=args.compile,
         channels_last=args.channels_last,
+        ewc_lambda=args.ewc_lambda,
     )
 
 
