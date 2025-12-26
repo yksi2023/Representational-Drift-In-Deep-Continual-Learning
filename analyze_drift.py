@@ -1,8 +1,9 @@
 import argparse
 import json
 import os
-from typing import List, Dict
+from typing import List, Dict, Optional
 import matplotlib.pyplot as plt
+import random
 
 import torch
 from torch.utils.data import DataLoader
@@ -94,16 +95,23 @@ def plot_drift_results(results: List[Dict], output_path: str):
 def main():
     parser = argparse.ArgumentParser(description="Analyze sample-wise representational drift")
     parser.add_argument("--ckpt_dir", type=str, required=True)
-    parser.add_argument("--layers", type=str, default="network.1") # 例如: "network.0, network.1"
+    parser.add_argument("--layers", type=str, default="network.1") 
     parser.add_argument("--batch_size", type=int, default=128)
     parser.add_argument("--max_batches", type=int, default=10)
-    parser.add_argument("--output_json", type=str, default=None)
-    parser.add_argument("--output_img", type=str, default=None)
+    parser.add_argument("--output_dir", type=str, default=None,
+                        help="Directory to save all analysis results (defaults to ckpt_dir/drift_analysis)")
     parser.add_argument("--dataset", type=str, default="fashion_mnist", choices=["fashion_mnist", "tiny_imagenet"])
     parser.add_argument("--amp", action="store_true", help="Use mixed precision")
-    parser.add_argument("--matrix_output_dir", type=str, default=None,
-                        help="Directory to save similarity matrix images (defaults to ckpt_dir)")
+    parser.add_argument("--neuron_ratio", type=float, default=1.0,
+                        help="Ratio of neurons to randomly sample for drift analysis (0.0-1.0, default: 1.0 for all)")
+    parser.add_argument("--seed", type=int, default=42,
+                        help="Random seed for neuron sampling reproducibility")
+    parser.add_argument("--probe_type", type=str, default="test", choices=["test","train"])
     args = parser.parse_args()
+    
+    # Validate neuron_ratio
+    if not 0.0 < args.neuron_ratio <= 1.0:
+        raise ValueError("--neuron_ratio must be in range (0.0, 1.0]")
 
     # Initialize data, model and output paths
     if args.dataset == "fashion_mnist":
@@ -115,15 +123,24 @@ def main():
     else:
         raise ValueError("Invalid dataset")
     
-    if args.output_json is None:
-        args.output_json = os.path.join(args.ckpt_dir, "drift_stats.json")
-    if args.output_img is None:
-        args.output_img = os.path.join(args.ckpt_dir, "drift_plot.png")
+    # Setup output directories and paths
+    if args.output_dir is None:
+        args.output_dir = os.path.join(args.ckpt_dir, "drift_analysis")
+    
+    os.makedirs(args.output_dir, exist_ok=True)
+    metrics_path = os.path.join(args.output_dir, "metrics.json")
+    drift_plot_path = os.path.join(args.output_dir, "drift_plot.png")
+    matrix_dir = os.path.join(args.output_dir, "similarity_matrices")
+    os.makedirs(matrix_dir, exist_ok=True)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model.to(device)
     
     layer_names: List[str] = [s.strip() for s in args.layers.split(",") if s.strip()]
+    
+    # Set random seed for reproducibility
+    random.seed(args.seed)
+    torch.manual_seed(args.seed)
 
     # Get probe data
     # read metadata to determine which classes are included
@@ -136,7 +153,7 @@ def main():
     
     #  Key point: shuffle=False ensures sample order is strictly consistent across Checkpoints
     probe_loader = data_manager.get_loader(
-        mode="test", 
+        mode=args.probe_type, 
         label=range(increment), # only look at Task 1 classes
         batch_size=args.batch_size,
         shuffle=False 
@@ -158,6 +175,22 @@ def main():
         model, probe_loader, layer_names, 
         device=device, max_batches=args.max_batches, use_amp=args.amp
     )
+    
+    # Sample neurons if ratio < 1.0
+    neuron_indices: Dict[str, Optional[torch.Tensor]] = {}
+    if args.neuron_ratio < 1.0:
+        print(f"Randomly sampling {args.neuron_ratio*100:.1f}% of neurons for each layer...")
+        for layer in layer_names:
+            num_neurons = baseline_reps[layer].shape[1]
+            num_sample = max(1, int(num_neurons * args.neuron_ratio))
+            indices = torch.tensor(random.sample(range(num_neurons), num_sample))
+            neuron_indices[layer] = indices
+            print(f"  {layer}: {num_sample}/{num_neurons} neurons selected")
+            # Apply sampling to baseline
+            baseline_reps[layer] = baseline_reps[layer][:, indices]
+    else:
+        for layer in layer_names:
+            neuron_indices[layer] = None
     
     # Compare subsequent tasks
     results = []
@@ -189,6 +222,9 @@ def main():
         for layer in layer_names:
             feat_base = baseline_reps[layer]
             feat_curr = current_reps[layer]
+            # Apply neuron sampling if needed
+            if neuron_indices[layer] is not None:
+                feat_curr = feat_curr[:, neuron_indices[layer]]
             
             metrics = compute_metrics(feat_base, feat_curr)
             
@@ -200,17 +236,14 @@ def main():
             })
 
     # Save statistics and plot
-    with open(args.output_json, "w", encoding="utf-8") as f:
+    with open(metrics_path, "w", encoding="utf-8") as f:
         json.dump(results, f, ensure_ascii=False, indent=2)
-    print(f"Metrics saved to {args.output_json}")
+    print(f"Metrics saved to {metrics_path}")
 
-    plot_drift_results(results, args.output_img)
+    plot_drift_results(results, drift_plot_path)
 
     # Generate similarity matrix heatmaps
     print("\nGenerating similarity matrix heatmaps...")
-        
-    matrix_output_dir = args.matrix_output_dir or args.ckpt_dir
-    os.makedirs(matrix_output_dir, exist_ok=True)
         
     # Collect representations from all checkpoints
     all_reps: Dict[str, Dict[int, torch.Tensor]] = {ln: {} for ln in layer_names}
@@ -223,7 +256,11 @@ def main():
             device=device, max_batches=args.max_batches, use_amp=args.amp
         )
         for ln in layer_names:
-            all_reps[ln][task_idx] = reps[ln]
+            # Apply neuron sampling if needed
+            if neuron_indices[ln] is not None:
+                all_reps[ln][task_idx] = reps[ln][:, neuron_indices[ln]]
+            else:
+                all_reps[ln][task_idx] = reps[ln]
         
     # Compute and plot similarity matrix for each layer
     for layer in layer_names:
@@ -235,11 +272,11 @@ def main():
             
         # Generate safe filename for layer
         safe_layer_name = layer.replace(".", "_").replace("/", "_")
-        output_path = os.path.join(matrix_output_dir, f"similarity_matrix_{safe_layer_name}.png")
+        output_path = os.path.join(matrix_dir, f"similarity_matrix_{safe_layer_name}.png")
             
         plot_similarity_matrix(sim_matrix, sorted_task_indices, layer, output_path)
         
-    print(f"All similarity matrices saved to {matrix_output_dir}")
+    print(f"All similarity matrices saved to {matrix_dir}")
 
 if __name__ == "__main__":
     main()

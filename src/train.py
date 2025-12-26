@@ -2,10 +2,11 @@ import tqdm
 from src.eval import evaluate
 from src.utils import add_heads, update_memory, EarlyStopping
 import torch
+import torch.nn.functional as F
 import random
 import os
 
-def normal_train(model, train_loader, criterion, optimizer, device, epochs, val_loader=None, early_stopping: EarlyStopping = None, scheduler=None, use_amp: bool = False):
+def normal_train(model, train_loader, criterion, optimizer, device, epochs, val_loader=None, early_stopping: EarlyStopping = None, scheduler=None, use_amp: bool = False, active_classes_range=None):
     use_cuda_amp = bool(use_amp and (device.type == 'cuda'))
     scaler = torch.amp.GradScaler() if use_cuda_amp else None
 
@@ -22,7 +23,11 @@ def normal_train(model, train_loader, criterion, optimizer, device, epochs, val_
             if use_cuda_amp:
                 with torch.amp.autocast(device_type=device.type):
                     outputs = model(inputs)
-                    loss = criterion(outputs, labels)
+                    if active_classes_range is not None:
+                        start_cls, end_cls = active_classes_range
+                        loss = criterion(outputs[:, start_cls:end_cls], labels - start_cls)
+                    else:
+                        loss = criterion(outputs, labels)
                 scaler.scale(loss).backward()
                 scaler.unscale_(optimizer)  # unscale the gradients to the original value
                 torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=5.0)
@@ -30,7 +35,11 @@ def normal_train(model, train_loader, criterion, optimizer, device, epochs, val_
                 scaler.update()
             else:
                 outputs = model(inputs)
-                loss = criterion(outputs, labels)
+                if active_classes_range is not None:
+                    start_cls, end_cls = active_classes_range
+                    loss = criterion(outputs[:, start_cls:end_cls], labels - start_cls)
+                else:
+                    loss = criterion(outputs, labels)
                 loss.backward()
                 torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=5.0)
                 optimizer.step()
@@ -42,7 +51,7 @@ def normal_train(model, train_loader, criterion, optimizer, device, epochs, val_
 
         # Validation and early stopping
         if val_loader is not None:
-            val_loss, val_acc = evaluate(model, val_loader, criterion, device)
+            val_loss, val_acc = evaluate(model, val_loader, criterion, device, active_classes_range=active_classes_range)
             print(f"Validation - Loss: {val_loss:.4f}, Acc: {val_acc:.2f}%")
             
             # Update learning rate scheduler based on validation loss
@@ -62,7 +71,7 @@ def normal_train(model, train_loader, criterion, optimizer, device, epochs, val_
         early_stopping.restore(model)
 
 
-def replay_train(model, train_set, criterion, optimizer, device, epochs, memory_set, memory_size, batch_size=64, val_loader=None, early_stopping: EarlyStopping = None, scheduler=None, use_amp: bool = False, first_task_only_memory: bool = False, is_first_task: bool = True):
+def replay_train(model, train_set, criterion, optimizer, device, epochs, memory_set, memory_size, batch_size=64, val_loader=None, early_stopping: EarlyStopping = None, scheduler=None, use_amp: bool = False, first_task_only_memory: bool = False, is_first_task: bool = True, active_classes_range=None):
     model.train()
 
     use_cuda_amp = bool(use_amp and (device.type == 'cuda'))
@@ -130,7 +139,11 @@ def replay_train(model, train_set, criterion, optimizer, device, epochs, memory_
             if use_cuda_amp:
                 with torch.amp.autocast(device_type=device.type):
                     outputs = model(inputs)
-                    loss = criterion(outputs, labels)
+                    if active_classes_range is not None:
+                        start_cls, end_cls = active_classes_range
+                        loss = criterion(outputs[:, start_cls:end_cls], labels - start_cls)
+                    else:
+                        loss = criterion(outputs, labels)
                 scaler.scale(loss).backward()
                 scaler.unscale_(optimizer)  # unscale the gradients to the original value
                 torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=5.0)
@@ -138,7 +151,11 @@ def replay_train(model, train_set, criterion, optimizer, device, epochs, memory_
                 scaler.update()
             else:
                 outputs = model(inputs)
-                loss = criterion(outputs, labels)
+                if active_classes_range is not None:
+                    start_cls, end_cls = active_classes_range
+                    loss = criterion(outputs[:, start_cls:end_cls], labels - start_cls)
+                else:
+                    loss = criterion(outputs, labels)
                 loss.backward()
                 torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=5.0)
                 optimizer.step()
@@ -150,7 +167,7 @@ def replay_train(model, train_set, criterion, optimizer, device, epochs, memory_
 
         # Validation and early stopping
         if val_loader is not None:
-            val_loss, val_acc = evaluate(model, val_loader, criterion, device)
+            val_loss, val_acc = evaluate(model, val_loader, criterion, device, active_classes_range=active_classes_range)
             print(f"Validation - Loss: {val_loss:.4f}, Acc: {val_acc:.2f}%")
             
             # Update learning rate scheduler based on validation loss
@@ -213,3 +230,171 @@ def replay_train(model, train_set, criterion, optimizer, device, epochs, memory_
 
     return updated_memory
 
+def compute_fisher_information(model, data_loader, criterion, device, num_samples=None):
+    """
+    Compute the Fisher Information Matrix (diagonal approximation) for EWC.
+    
+    Args:
+        model: The trained model
+        data_loader: DataLoader for the task data
+        criterion: Loss function
+        device: Device to run on
+        num_samples: Number of samples to use (None = use all)
+    
+    Returns:
+        fisher_dict: Dictionary mapping parameter names to their Fisher information values
+        optimal_params: Dictionary mapping parameter names to their optimal values
+    """
+    model.eval()
+    fisher_dict = {}
+    optimal_params = {}
+    
+    # Initialize Fisher information to zero
+    for name, param in model.named_parameters():
+        if param.requires_grad:
+            fisher_dict[name] = torch.zeros_like(param.data)
+            optimal_params[name] = param.data.clone()
+    
+    # Accumulate gradients squared
+    sample_count = 0
+    for inputs, labels in data_loader:
+        if num_samples is not None and sample_count >= num_samples:
+            break
+        
+        inputs = inputs.to(device)
+        labels = labels.to(device)
+        
+        model.zero_grad()
+        outputs = model(inputs)
+        loss = criterion(outputs, labels)
+        loss.backward()
+        
+        for name, param in model.named_parameters():
+            if param.requires_grad and param.grad is not None:
+                fisher_dict[name] += param.grad.detach() ** 2
+        
+        sample_count += inputs.size(0)
+    
+    # Average the Fisher information
+    total_samples = sample_count if num_samples is None else min(sample_count, num_samples)
+    for name in fisher_dict:
+        fisher_dict[name] /= max(1, total_samples)
+    
+    model.train()
+    return fisher_dict, optimal_params
+
+
+
+def ewc_train(model, train_loader, criterion, optimizer, device, epochs, 
+              fisher_dict=None, optimal_params=None, ewc_lambda=1000.0,
+              val_loader=None, early_stopping: EarlyStopping = None, 
+              scheduler=None, use_amp: bool = False, active_classes_range=None):
+    """
+    Train with EWC regularization.
+    
+    Args:
+        model: The neural network model
+        train_loader: DataLoader for current task
+        criterion: Loss function
+        optimizer: Optimizer
+        device: Device to run on
+        epochs: Number of training epochs
+        fisher_dict: Fisher information from first task (None for first task)
+        optimal_params: Optimal parameters from first task (None for first task)
+        ewc_lambda: EWC regularization strength
+        val_loader: Validation DataLoader
+        early_stopping: EarlyStopping instance
+        scheduler: Learning rate scheduler
+        use_amp: Whether to use automatic mixed precision
+        active_classes_range: Tuple of (start_class, end_class) to mask the output
+    """
+    use_cuda_amp = bool(use_amp and (device.type == 'cuda'))
+    scaler = torch.amp.GradScaler() if use_cuda_amp else None
+    
+    def compute_ewc_penalty():
+        """Compute the EWC penalty term."""
+        if fisher_dict is None or optimal_params is None:
+            return 0.0
+        
+        penalty = 0.0
+        for name, param in model.named_parameters():
+            if param.requires_grad and name in fisher_dict:
+                penalty += (fisher_dict[name] * (param - optimal_params[name]) ** 2).sum()
+        return penalty
+
+    for epoch in range(epochs):
+        model.train()
+        running_loss = 0.0
+        running_task_loss = 0.0
+        running_ewc_loss = 0.0
+        progress_bar = tqdm.tqdm(train_loader, desc=f"Epoch {epoch+1}/{epochs}", disable=True)
+        
+        for inputs, labels in progress_bar:
+            inputs = inputs.to(device, non_blocking=True)
+            labels = labels.to(device, non_blocking=True)
+
+            optimizer.zero_grad(set_to_none=True)
+
+            if use_cuda_amp:
+                with torch.amp.autocast(device_type=device.type):
+                    outputs = model(inputs)
+                    if active_classes_range is not None:
+                        start_cls, end_cls = active_classes_range
+                        task_loss = criterion(outputs[:, start_cls:end_cls], labels - start_cls)
+                    else:
+                        task_loss = criterion(outputs, labels)
+                # EWC penalty computed outside autocast (full precision)
+                ewc_penalty = compute_ewc_penalty()
+                loss = task_loss + (ewc_lambda / 2.0) * ewc_penalty
+                
+                scaler.scale(loss).backward()
+                scaler.unscale_(optimizer)
+                torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=5.0)
+                scaler.step(optimizer)
+                scaler.update()
+            else:
+                outputs = model(inputs)
+                if active_classes_range is not None:
+                    start_cls, end_cls = active_classes_range
+                    task_loss = criterion(outputs[:, start_cls:end_cls], labels - start_cls)
+                else:
+                    task_loss = criterion(outputs, labels)
+                ewc_penalty = compute_ewc_penalty()
+                loss = task_loss + (ewc_lambda / 2.0) * ewc_penalty
+                
+                loss.backward()
+                torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=5.0)
+                optimizer.step()
+
+            running_loss += loss.item()
+            running_task_loss += task_loss.item()
+            if isinstance(ewc_penalty, float):
+                running_ewc_loss += ewc_penalty
+            else:
+                running_ewc_loss += ewc_penalty.item()
+            progress_bar.set_postfix(loss=running_loss / (progress_bar.n + 1))
+        
+        epoch_loss = running_loss / len(train_loader)
+        epoch_task_loss = running_task_loss / len(train_loader)
+        epoch_ewc_loss = running_ewc_loss / len(train_loader)
+        print(f"Epoch [{epoch+1}/{epochs}], Total Loss: {epoch_loss:.4f}, Task Loss: {epoch_task_loss:.4f}, EWC Loss: {epoch_ewc_loss:.6f}")
+
+        # Validation and early stopping
+        if val_loader is not None:
+            val_loss, val_acc = evaluate(model, val_loader, criterion, device, active_classes_range=active_classes_range)
+            print(f"Validation - Loss: {val_loss:.4f}, Acc: {val_acc:.2f}%")
+            
+            if scheduler is not None:
+                scheduler.step(val_loss)
+                current_lr = optimizer.param_groups[0]['lr']
+                print(f"Current LR: {current_lr:.6f}")
+            
+            if early_stopping is not None:
+                should_stop = early_stopping.step(model, val_loss)
+                if should_stop:
+                    print(f"Early stopping triggered at epoch {epoch+1}")
+                    break
+
+    # Optionally restore best weights
+    if val_loader is not None and early_stopping is not None:
+        early_stopping.restore(model)

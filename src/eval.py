@@ -4,7 +4,14 @@ import json
 import matplotlib.pyplot as plt
 import os
 
-def evaluate(model, test_loader, criterion, device):
+def evaluate(model, test_loader, criterion, device, active_classes_range=None):
+    """
+    Evaluate model on test data.
+    
+    Args:
+        active_classes_range: Optional tuple (start_cls, end_cls) for task-incremental evaluation.
+                              If None, uses class-incremental evaluation (full output).
+    """
     model.eval()
     total_loss = 0.0
     correct = 0
@@ -15,11 +22,23 @@ def evaluate(model, test_loader, criterion, device):
             inputs = inputs.to(device, non_blocking=True)
             labels = labels.to(device, non_blocking=True)
             outputs = model(inputs)
-            loss = criterion(outputs, labels)
+            
+            if active_classes_range is not None:
+                # Task-incremental: only consider current task's classes
+                start_cls, end_cls = active_classes_range
+                masked_outputs = outputs[:, start_cls:end_cls]
+                adjusted_labels = labels - start_cls
+                loss = criterion(masked_outputs, adjusted_labels)
+                _, predicted = masked_outputs.max(1)
+                correct += predicted.eq(adjusted_labels).sum().item()
+            else:
+                # Class-incremental: consider all classes
+                loss = criterion(outputs, labels)
+                _, predicted = outputs.max(1)
+                correct += predicted.eq(labels).sum().item()
+            
             total_loss += loss.item()
-            _, predicted = outputs.max(1)
             total += labels.size(0)
-            correct += predicted.eq(labels).sum().item()
     avg_loss = total_loss / len(test_loader)
     accuracy = 100.0 * correct / total
     print(f"Test Loss: {avg_loss:.4f}, Accuracy: {accuracy:.2f}%")
