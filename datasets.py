@@ -33,8 +33,26 @@ class IncrementalFashionMNIST:
             self.train_set = full_train
             # Use an empty subset for validation if disabled
             self.val_set = torch.utils.data.Subset(full_train, [])
+        
+        # Precompute class indices for fast lookup
+        self._class_indices = {"train": {}, "test": {}, "val": {}}
+        self._precompute_class_indices()
         # cache for subsets by (mode, labels)
         self._cache_indices = {"train": {}, "test": {}, "val": {}}
+    
+    def _precompute_class_indices(self):
+        """Precompute indices for each class to avoid repeated iteration."""
+        for mode, dataset in [("train", self.train_set), ("test", self.test_set), ("val", self.val_set)]:
+            class_to_indices = {}
+            for i, (_, lbl) in enumerate(dataset):
+                lbl = int(lbl)
+                if lbl not in class_to_indices:
+                    class_to_indices[lbl] = []
+                class_to_indices[lbl].append(i)
+            # Convert to tensor for faster concatenation
+            for lbl in class_to_indices:
+                class_to_indices[lbl] = torch.tensor(class_to_indices[lbl], dtype=torch.long)
+            self._class_indices[mode] = class_to_indices
     def get_set(self, mode, label):
         if mode == 'train':
             data = self.train_set
@@ -43,7 +61,7 @@ class IncrementalFashionMNIST:
         elif mode == 'val':
             data = self.val_set
         else:
-            raise ValueError("Mode should be 'train' or 'test'")
+            raise ValueError("Mode should be 'train', 'test', or 'val'")
 
         # normalize labels into a sorted tuple key for caching
         try:
@@ -55,7 +73,14 @@ class IncrementalFashionMNIST:
         if label_key in cache:
             return cache[label_key]
 
-        indices = [i for i, (_, lbl) in enumerate(data) if lbl in label]
+        # Use precomputed class indices for fast lookup
+        class_indices = self._class_indices[mode]
+        indices_list = [class_indices[lbl] for lbl in label_key if lbl in class_indices]
+        if indices_list:
+            indices = torch.cat(indices_list).tolist()
+        else:
+            indices = []
+        
         subset = torch.utils.data.Subset(data, indices)
         cache[label_key] = subset
 
@@ -119,8 +144,23 @@ class IncrementalTinyImageNet:
                                                                                 transforms.Normalize(mean=imagenet_mean, std=imagenet_std),
                                                                         ])
                                             )
+        
+        # Precompute class indices for fast lookup using ImageFolder.targets
+        self._class_indices = {"train": {}, "test": {}, "val": {}}
+        self._precompute_class_indices()
         # cache for subsets by (mode, labels)
         self._cache_indices = {"train": {}, "test": {}, "val": {}}
+    
+    def _precompute_class_indices(self):
+        """Use ImageFolder.targets for fast vectorized indexing."""
+        for mode, dataset in [("train", self.train_set), ("test", self.test_set), ("val", self.val_set)]:
+            targets = torch.tensor(dataset.targets, dtype=torch.long)
+            class_to_indices = {}
+            for lbl in range(200):  # TinyImageNet has 200 classes
+                mask = (targets == lbl)
+                if mask.any():
+                    class_to_indices[lbl] = mask.nonzero(as_tuple=True)[0]
+            self._class_indices[mode] = class_to_indices
     
 
     def get_set(self, mode, label):
@@ -131,7 +171,7 @@ class IncrementalTinyImageNet:
         elif mode == 'val':
             data = self.val_set
         else:
-            raise ValueError("Mode should be 'train' or 'test'")
+            raise ValueError("Mode should be 'train', 'test', or 'val'")
 
         # normalize labels into a sorted tuple key for caching
         try:
@@ -143,7 +183,14 @@ class IncrementalTinyImageNet:
         if label_key in cache:
             return cache[label_key]
 
-        indices = [i for i, (_, lbl) in enumerate(data) if lbl in label]
+        # Use precomputed class indices for fast lookup
+        class_indices = self._class_indices[mode]
+        indices_list = [class_indices[lbl] for lbl in label_key if lbl in class_indices]
+        if indices_list:
+            indices = torch.cat(indices_list).tolist()
+        else:
+            indices = []
+        
         subset = torch.utils.data.Subset(data, indices)
         cache[label_key] = subset
         

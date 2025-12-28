@@ -196,31 +196,61 @@ def replay_train(model, train_set, criterion, optimizer, device, epochs, memory_
         new_labels = []
 
         # Sample from current task data to add to memory
-        # Calculate how many samples to add per class in current task (projected class-balanced quota)
-        current_task_classes = set()
-        for _, label in train_set:
-            current_task_classes.add(label)
-
+        # Single pass: group indices by class
+        class_to_indices = {}
+        
+        # Optimization: Try to access targets directly to avoid IO bottleneck (critical for ImageFolder)
+        targets = None
+        # Check if it's a Subset and we can access the underlying targets efficiently
+        if isinstance(train_set, torch.utils.data.Subset) and hasattr(train_set.dataset, 'targets'):
+             try:
+                 full_targets = train_set.dataset.targets
+                 indices = train_set.indices
+                 # Ensure indices are handled correctly whether list or tensor
+                 if torch.is_tensor(indices):
+                     indices = indices.tolist()
+                 
+                 # Access targets
+                 if torch.is_tensor(full_targets):
+                     targets = full_targets[indices].tolist()
+                 elif isinstance(full_targets, list):
+                     targets = [int(full_targets[i]) for i in indices]
+             except Exception as e:
+                 # If anything goes wrong (e.g. index out of bounds, incompatible types), fallback
+                 targets = None
+        
+        if targets is not None:
+            # Fast path: use pre-fetched targets
+            for i, label in enumerate(targets):
+                if label not in class_to_indices:
+                    class_to_indices[label] = []
+                class_to_indices[label].append(i)
+        else:
+            # Slow path: iterate dataset (reads images from disk for ImageFolder)
+            for i, (_, label) in enumerate(train_set):
+                label = int(label)
+                if label not in class_to_indices:
+                    class_to_indices[label] = []
+                class_to_indices[label].append(i)
+        
+        current_task_classes = set(class_to_indices.keys())
         seen_labels_set = set(memory_set["labels"]) if len(memory_set["labels"]) > 0 else set()
         total_classes = len(seen_labels_set.union(current_task_classes)) if len(current_task_classes) > 0 else max(1, len(seen_labels_set))
         samples_per_class = max(1, memory_size // max(1, total_classes))
 
-        # Sample data from current task
-        for class_label in current_task_classes:
-            class_indices = [i for i, (_, label) in enumerate(train_set) if label == class_label]
-            if len(class_indices) > 0:
-                # Sample up to samples_per_class from this class
-                num_samples = min(samples_per_class, len(class_indices))
-                selected_indices = random.sample(class_indices, num_samples)
+        # Sample data from current task using precomputed indices
+        for class_label, indices in class_to_indices.items():
+            num_samples = min(samples_per_class, len(indices))
+            selected_indices = random.sample(indices, num_samples)
 
-                for idx in selected_indices:
-                    data, label = train_set[idx]
-                    # Ensure data is a tensor and label is an integer
-                    if isinstance(data, torch.Tensor):
-                        new_data.append(data.cpu())
-                    else:
-                        new_data.append(torch.tensor(data).cpu())
-                    new_labels.append(int(label))
+            for idx in selected_indices:
+                data, label = train_set[idx]
+                # Ensure data is a tensor and label is an integer
+                if isinstance(data, torch.Tensor):
+                    new_data.append(data.cpu())
+                else:
+                    new_data.append(torch.tensor(data).cpu())
+                new_labels.append(int(label))
 
         # Update memory with new samples
         updated_memory = update_memory(memory_set, new_data, new_labels, memory_size)
