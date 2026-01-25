@@ -1,3 +1,6 @@
-torch==2.9.0
-torchvision==0.24.0
-tqdm==4.67.1
+torch
+torchvision
+tqdm
+matplotlib
+numpy
+scikit-learn

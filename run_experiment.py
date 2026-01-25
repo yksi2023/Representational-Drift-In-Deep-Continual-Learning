@@ -1,5 +1,7 @@
 import argparse
 import torch
+import json
+import os
 
 from src.models import FashionMNISTModel, ResNet18_Tiny, PretrainedResNet18
 from src.continual import incremental_learning
@@ -34,6 +36,13 @@ def main():
     parser.add_argument("--ewc_lambda", type=float, default=1000.0, help="EWC regularization strength (only used when method=ewc)")
     parser.add_argument("--learning_mode", type=str, default="til", choices=["til", "cil"], help="Learning mode: 'til' (task-incremental, masked output) or 'cil' (class-incremental, full output)")
     args = parser.parse_args()
+
+    # Save experiment configuration
+    os.makedirs(args.save_dir, exist_ok=True)
+    config_path = os.path.join(args.save_dir, "experiment_config.json")
+    with open(config_path, "w", encoding="utf-8") as f:
+        json.dump(vars(args), f, indent=4, ensure_ascii=False)
+    print(f"Experiment configuration saved to {config_path}")
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     # Backend optimizations

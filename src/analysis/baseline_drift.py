@@ -16,7 +16,7 @@ from src.representations import extract_representations
 from src.analysis.drift_metrics import compute_metrics
 
 
-def plot_drift_results(results: List[Dict], output_path: str):
+def plot_drift_results(results: List[Dict], output_dir: str):
     """Plot drift metrics and save to file."""
     tasks = [r['target_task'] for r in results]
     layers = sorted(list(set(r['layer'] for r in results)))
@@ -32,28 +32,78 @@ def plot_drift_results(results: List[Dict], output_path: str):
         # Cosine Sim
         cos_means = [d['cosine_sim_mean'] for d in layer_data]
         cos_stds = [d['cosine_sim_std'] for d in layer_data]
-        ax1.errorbar(xs, cos_means, yerr=cos_stds, label=layer, capsize=5, marker='o')
+        line = ax1.errorbar(xs, cos_means, yerr=cos_stds, label=f"{layer}", capsize=5, marker='o')
+        
+        # Shuffled Baseline (Same color, dashed)
+        shuffled_means = [d['shuffled_sim_mean'] for d in layer_data]
+        ax1.plot(xs, shuffled_means, linestyle='--', color=line[0].get_color(), alpha=0.5, label=f"{layer} (Random)")
         
         # L2 Dist
         l2_means = [d['l2_dist_mean'] for d in layer_data]
         l2_stds = [d['l2_dist_std'] for d in layer_data]
         ax2.errorbar(xs, l2_means, yerr=l2_stds, label=layer, capsize=5, marker='o')
 
-    ax1.set_title("Cosine Similarity Decay")
+    ax1.set_title("Cosine Similarity (Solid) vs Shuffled Baseline (Dashed)")
     ax1.set_xlabel("Task Index")
-    ax1.set_ylabel("Cosine Similarity to Baseline")
+    ax1.set_ylabel("Cosine Similarity")
     ax1.legend()
     ax1.grid(True, linestyle='--', alpha=0.6)
 
     ax2.set_title("L2 Distance Drift")
     ax2.set_xlabel("Task Index")
-    ax2.set_ylabel("L2 Distance from Baseline")
+    ax2.set_ylabel("L2 Distance")
     ax2.legend()
     ax2.grid(True, linestyle='--', alpha=0.6)
 
     plt.tight_layout()
+    output_path = os.path.join(output_dir, "drift_plot.png")
     plt.savefig(output_path)
     print(f"Drift plot saved to {output_path}")
+    plt.close()
+
+
+def plot_activation_distribution(
+    vec_base: torch.Tensor, 
+    vec_curr: torch.Tensor, 
+    layer_name: str, 
+    task_idx: int, 
+    output_dir: str,
+    num_samples: int = 3
+):
+    """
+    Plot histogram of activation values for a few sample vectors.
+    """
+    # Detach and CPU
+    vec_base = vec_base.detach().cpu()
+    vec_curr = vec_curr.detach().cpu()
+    
+    # Randomly select a few samples to visualize
+    N = vec_base.shape[0]
+    indices = torch.randperm(N)[:num_samples]
+    
+    fig, axes = plt.subplots(num_samples, 1, figsize=(10, 4 * num_samples))
+    if num_samples == 1: axes = [axes]
+    
+    for i, idx in enumerate(indices):
+        ax = axes[i]
+        v_b = vec_base[idx].numpy().flatten()
+        v_c = vec_curr[idx].numpy().flatten()
+        
+        # Plot histograms
+        ax.hist(v_b, bins=50, alpha=0.5, label='Baseline', density=True, color='blue')
+        ax.hist(v_c, bins=50, alpha=0.5, label=f'Task {task_idx}', density=True, color='orange')
+        
+        ax.set_title(f"Sample {idx.item()} - Activation Distribution")
+        ax.set_xlabel("Activation Value")
+        ax.set_ylabel("Density")
+        ax.legend()
+        ax.grid(True, alpha=0.3)
+        
+    plt.tight_layout()
+    # Save per layer/task
+    save_dir = os.path.join(output_dir, "distributions", layer_name)
+    os.makedirs(save_dir, exist_ok=True)
+    plt.savefig(os.path.join(save_dir, f"task_{task_idx}.png"))
     plt.close()
 
 
@@ -129,14 +179,23 @@ def run_baseline_drift(
     
     # Initial point: Baseline compares to itself
     for layer in layer_names:
+        feat_base = baseline_reps[layer]
+        # Note: baseline_reps is already subsampled if neuron_ratio < 1.0
+        
+        metrics = compute_metrics(feat_base, feat_base)
+        
+        plot_activation_distribution(
+            feat_base, feat_base,
+            layer_name=layer,
+            task_idx=baseline_idx,
+            output_dir=output_dir
+        )
+        
         results.append({
             "baseline_task": baseline_idx,
             "target_task": baseline_idx,
             "layer": layer,
-            "cosine_sim_mean": 1.0,
-            "cosine_sim_std": 0.0,
-            "l2_dist_mean": 0.0,
-            "l2_dist_std": 0.0,
+            **metrics
         })
 
     for task_idx in sorted_task_indices:
@@ -159,6 +218,13 @@ def run_baseline_drift(
             
             metrics = compute_metrics(feat_base, feat_curr)
             
+            plot_activation_distribution(
+                feat_base, feat_curr,
+                layer_name=layer,
+                task_idx=task_idx,
+                output_dir=output_dir
+            )
+            
             results.append({
                 "baseline_task": baseline_idx,
                 "target_task": task_idx,
@@ -171,6 +237,6 @@ def run_baseline_drift(
         json.dump(results, f, ensure_ascii=False, indent=2)
     print(f"Metrics saved to {metrics_path}")
 
-    plot_drift_results(results, drift_plot_path)
+    plot_drift_results(results, output_dir)
     
     return neuron_indices

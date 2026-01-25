@@ -27,6 +27,8 @@ def compute_metrics(a: torch.Tensor, b: torch.Tensor) -> Dict[str, float]:
             "cosine_sim_std": float("nan"),
             "l2_dist_mean": float("nan"),
             "l2_dist_std": float("nan"),
+            "shuffled_sim_mean": float("nan"),
+            "shuffled_sim_std": float("nan"),
         }
 
     # 1. Cosine Similarity (逐样本计算)
@@ -37,11 +39,21 @@ def compute_metrics(a: torch.Tensor, b: torch.Tensor) -> Dict[str, float]:
     # (a - b) shape [N, D] -> norm(dim=1) -> shape [N]
     l2_dist = torch.norm(a - b, p=2, dim=1)
 
+    # 3. Shuffled Baseline Similarity
+    # Shuffle b along dimension 1 (features) for each sample
+    N, D = b.shape
+    rand_idx = torch.rand(N, D, device=b.device).argsort(dim=1)
+    b_shuffled = torch.gather(b, 1, rand_idx)
+    
+    shuffled_sim = F.cosine_similarity(a, b_shuffled, dim=1, eps=1e-8)
+
     return {
         "cosine_sim_mean": cos_sim.mean().item(),
         "cosine_sim_std": cos_sim.std().item(),
         "l2_dist_mean": l2_dist.mean().item(),
-        "l2_dist_std": l2_dist.std().item()
+        "l2_dist_std": l2_dist.std().item(),
+        "shuffled_sim_mean": shuffled_sim.mean().item(),
+        "shuffled_sim_std": shuffled_sim.std().item(),
     }
 
 
