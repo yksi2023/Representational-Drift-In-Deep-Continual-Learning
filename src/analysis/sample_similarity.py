@@ -182,8 +182,12 @@ def run_sample_similarity(
     print(f"Total samples: {len(labels)}, Classes: {len(unique_labels)}")
     print(f"Class boundaries at indices: {class_boundaries}")
     
+    # Process only the final checkpoint
+    final_task_idx = sorted_task_indices[-1]
+    print(f"Selecting final model (Task {final_task_idx}) for sample similarity analysis.")
+    
     # Process each checkpoint
-    for task_idx in sorted_task_indices:
+    for task_idx in [final_task_idx]:
         print(f"\nProcessing model after Task {task_idx}...")
         load_model(model, ckpt_dir, task_idx, map_location=device)
         

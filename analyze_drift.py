@@ -4,6 +4,7 @@ This script provides comprehensive drift analysis including:
 1. Baseline drift metrics (cosine similarity, L2 distance over tasks)
 2. Model pairwise similarity matrices
 3. Sample-wise similarity matrices
+4. Performance plots (from saved training metrics)
 """
 import argparse
 import json
@@ -15,6 +16,7 @@ import torch
 from src.models import FashionMNISTModel, ResNet18_Tiny, PretrainedResNet18
 from src.checkpoints import list_checkpoints
 from src.analysis import run_baseline_drift, run_model_similarity, run_sample_similarity
+from src.eval import plot_performance_from_files
 from datasets import IncrementalFashionMNIST, IncrementalTinyImageNet
 
 
@@ -99,7 +101,7 @@ def main():
     print("="*60)
     
     # 1. Baseline drift analysis
-    print("\n[1/3] Running baseline drift analysis...")
+    print("\n[1/4] Running baseline drift analysis...")
     neuron_indices = run_baseline_drift(
         model=model,
         probe_loader=probe_loader,
@@ -114,7 +116,7 @@ def main():
     )
     
     # 2. Model pairwise similarity matrices
-    print("\n[2/3] Running model similarity analysis...")
+    print("\n[2/4] Running model similarity analysis...")
     run_model_similarity(
         model=model,
         probe_loader=probe_loader,
@@ -128,7 +130,7 @@ def main():
     )
     
     # 3. Sample-wise similarity matrices
-    print("\n[3/3] Running sample similarity analysis...")
+    print("\n[3/4] Running sample similarity analysis...")
     run_sample_similarity(
         model=model,
         probe_loader=probe_loader,
@@ -140,6 +142,13 @@ def main():
         use_amp=args.amp,
         neuron_indices=neuron_indices,
     )
+    
+    # 4. Performance plots
+    print("\n[4/4] Generating performance plots...")
+    try:
+        plot_performance_from_files(args.ckpt_dir, args.output_dir)
+    except FileNotFoundError as e:
+        print(f"  Skipping performance plots: {e}")
     
     print("\n" + "="*60)
     print("ANALYSIS COMPLETE")

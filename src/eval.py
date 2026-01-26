@@ -46,36 +46,53 @@ def evaluate(model, test_loader, criterion, device, active_classes_range=None):
 
 def plot_performance(online_results: List[float], retrospective_results: List[float], first_task_results: List[float], save_dir: str = None):
     '''Plot figures for within-task performance, retrospective performance, and first task forgetting.'''
+    import numpy as np
+    
     num_plots = 3 
     fig, axes = plt.subplots(1, num_plots, figsize=(8 * num_plots, 6))
     
+    # Font sizes
+    TITLE_SIZE = 16
+    LABEL_SIZE = 22
+    TICK_SIZE = 12
+    
     ax1, ax2, ax3 = axes
     
-    ax1.plot(range(1,len(online_results)+1), online_results, marker='o')
-    ax2.plot(range(1,len(retrospective_results)+1), retrospective_results, marker='o')
-    ax1.set_title("Performance on the Current Task During Continual Learning")
-    ax1.set_xlabel("Task Index")
-    ax1.set_ylabel("Accuracy")
+    # X-axis ticks: step of 4, starting from 0
+    max_tasks = max(len(online_results), len(retrospective_results), len(first_task_results))
+    xticks = np.arange(0, max_tasks + 4, 4)
+    
+    ax1.plot(range(1,len(online_results)+1), online_results, marker='o', markersize=8, linewidth=2)
+    ax2.plot(range(1,len(retrospective_results)+1), retrospective_results, marker='o', markersize=8, linewidth=2)
+    ax1.set_title("Performance on the Current Task During Continual Learning", fontsize=TITLE_SIZE)
+    ax1.set_xlabel("Task Index", fontsize=LABEL_SIZE)
+    ax1.set_ylabel("Accuracy", fontsize=LABEL_SIZE)
     ax1.set_ylim(0, 100)
+    ax1.set_xticks(xticks)
+    ax1.tick_params(axis='both', labelsize=TICK_SIZE)
     ax1.grid(True, linestyle='--', alpha=0.6)
     
-    ax2.set_title("Performance on Previous Tasks After Completing All Training")
-    ax2.set_xlabel("Task Index")
-    ax2.set_ylabel("Accuracy")
+    ax2.set_title("Performance on Previous Tasks After Completing All Training", fontsize=TITLE_SIZE)
+    ax2.set_xlabel("Task Index", fontsize=LABEL_SIZE)
+    ax2.set_ylabel("Accuracy", fontsize=LABEL_SIZE)
     ax2.set_ylim(0, 100)
+    ax2.set_xticks(xticks)
+    ax2.tick_params(axis='both', labelsize=TICK_SIZE)
     ax2.grid(True, linestyle='--', alpha=0.6)
     
-    ax3.plot(range(1, len(first_task_results)+1), first_task_results, marker='o', color='red')
-    ax3.set_title("Performance on First Task After Each Task Training")
-    ax3.set_xlabel("Task Index")
-    ax3.set_ylabel("Accuracy")
+    ax3.plot(range(1, len(first_task_results)+1), first_task_results, marker='o', markersize=8, linewidth=2, color='red')
+    ax3.set_title("Performance on First Task After Each Task Training", fontsize=TITLE_SIZE)
+    ax3.set_xlabel("Task Index", fontsize=LABEL_SIZE)
+    ax3.set_ylabel("Accuracy", fontsize=LABEL_SIZE)
     ax3.set_ylim(0, 100)
+    ax3.set_xticks(xticks)
+    ax3.tick_params(axis='both', labelsize=TICK_SIZE)
     ax3.grid(True, linestyle='--', alpha=0.6)
     
     plt.tight_layout()
     if save_dir:
         os.makedirs(save_dir, exist_ok=True)
-        plt.savefig(os.path.join(save_dir, "performance.png"))
+        plt.savefig(os.path.join(save_dir, "performance.png"), dpi=150)
     
 
 def comprehensive_evaluation(
@@ -165,6 +182,49 @@ def comprehensive_evaluation(
         with open(results_path, "w", encoding="utf-8") as f:
             json.dump(results, f, ensure_ascii=False, indent=2)
         print(f"\nResults saved to: {results_path}")
-        plot_performance(online_results,  all_accuracies,  first_task_results, save_dir)
-    
     return results
+
+
+def plot_performance_from_files(ckpt_dir: str, output_dir: str = None):
+    """
+    Plot performance figures from saved JSON files.
+    
+    Reads training_metrics.json and comprehensive_evaluation.json from ckpt_dir,
+    then generates performance plots.
+    
+    Args:
+        ckpt_dir: Directory containing training_metrics.json and comprehensive_evaluation.json
+        output_dir: Directory to save plots (defaults to ckpt_dir)
+    """
+    if output_dir is None:
+        output_dir = ckpt_dir
+    
+    # Load training metrics
+    training_metrics_path = os.path.join(ckpt_dir, "training_metrics.json")
+    if not os.path.exists(training_metrics_path):
+        raise FileNotFoundError(f"Training metrics not found: {training_metrics_path}")
+    
+    with open(training_metrics_path, "r", encoding="utf-8") as f:
+        training_metrics = json.load(f)
+    
+    online_results = training_metrics["online_results"]
+    first_task_results = training_metrics["first_task_results"]
+    
+    # Load comprehensive evaluation results
+    eval_path = os.path.join(ckpt_dir, "comprehensive_evaluation.json")
+    if not os.path.exists(eval_path):
+        raise FileNotFoundError(f"Comprehensive evaluation not found: {eval_path}")
+    
+    with open(eval_path, "r", encoding="utf-8") as f:
+        eval_results = json.load(f)
+    
+    # Extract retrospective accuracies (exclude 'overall' key)
+    retrospective_results = [
+        eval_results[k]["accuracy"] 
+        for k in sorted(eval_results.keys(), key=lambda x: int(x.split("_")[1]) if x.startswith("task_") else 999)
+        if k.startswith("task_")
+    ]
+    
+    # Plot
+    plot_performance(online_results, retrospective_results, first_task_results, output_dir)
+    print(f"Performance plots saved to {output_dir}")

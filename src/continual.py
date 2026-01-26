@@ -1,4 +1,5 @@
 import torch
+import json
 from src.train import normal_train, replay_train, ewc_train, compute_fisher_information
 from src.utils import add_heads, EarlyStopping
 from src.eval import evaluate, comprehensive_evaluation
@@ -276,6 +277,16 @@ def incremental_learning(model,
             first_task_range = (0, increment) if learning_mode == "til" else None
             _, first_task_acc = evaluate(model, first_task_test_loader, criterion, device, active_classes_range=first_task_range)
             first_task_results.append(first_task_acc)
+    
+    # Save training metrics for later analysis/plotting
+    training_metrics = {
+        "online_results": online_results,
+        "first_task_results": first_task_results,
+    }
+    metrics_path = os.path.join(save_dir, "training_metrics.json")
+    with open(metrics_path, "w", encoding="utf-8") as f:
+        json.dump(training_metrics, f, ensure_ascii=False, indent=2)
+    print(f"Training metrics saved to {metrics_path}")
     
     # Run comprehensive evaluation after all tasks are completed
     if run_comprehensive_eval:
