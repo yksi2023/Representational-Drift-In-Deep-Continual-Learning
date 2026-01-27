@@ -51,48 +51,40 @@ def plot_performance(online_results: List[float], retrospective_results: List[fl
     num_plots = 3 
     fig, axes = plt.subplots(1, num_plots, figsize=(8 * num_plots, 6))
     
-    # Font sizes
-    TITLE_SIZE = 16
-    LABEL_SIZE = 22
-    TICK_SIZE = 12
-    
     ax1, ax2, ax3 = axes
     
     # X-axis ticks: step of 4, starting from 0
     max_tasks = max(len(online_results), len(retrospective_results), len(first_task_results))
     xticks = np.arange(0, max_tasks + 4, 4)
     
-    ax1.plot(range(1,len(online_results)+1), online_results, marker='o', markersize=8, linewidth=2)
-    ax2.plot(range(1,len(retrospective_results)+1), retrospective_results, marker='o', markersize=8, linewidth=2)
-    ax1.set_title("Performance on the Current Task During Continual Learning", fontsize=TITLE_SIZE)
-    ax1.set_xlabel("Task Index", fontsize=LABEL_SIZE)
-    ax1.set_ylabel("Accuracy", fontsize=LABEL_SIZE)
+    ax1.plot(range(1,len(online_results)+1), online_results, marker='o')
+    ax2.plot(range(1,len(retrospective_results)+1), retrospective_results, marker='o')
+    ax1.set_title("Performance on the Current Task During Continual Learning")
+    ax1.set_xlabel("Task Index")
+    ax1.set_ylabel("Accuracy")
     ax1.set_ylim(0, 100)
     ax1.set_xticks(xticks)
-    ax1.tick_params(axis='both', labelsize=TICK_SIZE)
     ax1.grid(True, linestyle='--', alpha=0.6)
     
-    ax2.set_title("Performance on Previous Tasks After Completing All Training", fontsize=TITLE_SIZE)
-    ax2.set_xlabel("Task Index", fontsize=LABEL_SIZE)
-    ax2.set_ylabel("Accuracy", fontsize=LABEL_SIZE)
+    ax2.set_title("Performance on Previous Tasks After Completing All Training")
+    ax2.set_xlabel("Task Index")
+    ax2.set_ylabel("Accuracy")
     ax2.set_ylim(0, 100)
     ax2.set_xticks(xticks)
-    ax2.tick_params(axis='both', labelsize=TICK_SIZE)
     ax2.grid(True, linestyle='--', alpha=0.6)
     
-    ax3.plot(range(1, len(first_task_results)+1), first_task_results, marker='o', markersize=8, linewidth=2, color='red')
-    ax3.set_title("Performance on First Task After Each Task Training", fontsize=TITLE_SIZE)
-    ax3.set_xlabel("Task Index", fontsize=LABEL_SIZE)
-    ax3.set_ylabel("Accuracy", fontsize=LABEL_SIZE)
+    ax3.plot(range(1, len(first_task_results)+1), first_task_results, marker='o', color='red')
+    ax3.set_title("Performance on First Task After Each Task Training")
+    ax3.set_xlabel("Task Index")
+    ax3.set_ylabel("Accuracy")
     ax3.set_ylim(0, 100)
     ax3.set_xticks(xticks)
-    ax3.tick_params(axis='both', labelsize=TICK_SIZE)
     ax3.grid(True, linestyle='--', alpha=0.6)
     
     plt.tight_layout()
     if save_dir:
         os.makedirs(save_dir, exist_ok=True)
-        plt.savefig(os.path.join(save_dir, "performance.png"), dpi=150)
+        plt.savefig(os.path.join(save_dir, "performance.png"))
     
 
 def comprehensive_evaluation(

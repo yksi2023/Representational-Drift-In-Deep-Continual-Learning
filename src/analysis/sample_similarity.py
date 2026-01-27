@@ -117,7 +117,7 @@ def plot_sample_similarity_matrix(
     ax.set_ylabel('Sample Index (sorted by class)')
     
     plt.tight_layout()
-    plt.savefig(output_path, dpi=150)
+    plt.savefig(output_path)
     plt.close()
 
 

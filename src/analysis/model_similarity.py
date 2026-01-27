@@ -3,8 +3,9 @@
 Computes pairwise similarity between representations from different checkpoint models.
 """
 import os
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
+import numpy as np
 import torch
 import matplotlib.pyplot as plt
 
@@ -49,8 +50,97 @@ def plot_similarity_matrix(
     ax.set_ylabel('Model after Task')
     
     plt.tight_layout()
-    plt.savefig(output_path, dpi=150)
+    plt.savefig(output_path)
     print(f"Similarity matrix saved to {output_path}")
+    plt.close()
+
+
+def compute_similarity_by_gap(
+    reps_dict: Dict[int, torch.Tensor],
+    task_indices: List[int],
+    exclude_first: bool = True
+) -> Tuple[List[int], List[float], List[float]]:
+    """
+    Compute average similarity grouped by task gap using raw representations.
+    
+    For each pair of models with gap g, compute per-sample cosine similarity,
+    then aggregate all sample similarities for that gap to compute mean and std.
+    
+    Args:
+        reps_dict: Dict mapping task_idx -> [N, D] representation tensor
+        task_indices: Sorted list of task indices
+        exclude_first: If True, exclude the first task model from analysis
+    
+    Returns:
+        gaps: List of task gap values
+        means: List of mean similarities for each gap
+        stds: List of std for each gap
+    """
+    import torch.nn.functional as F
+    
+    start_idx = 1 if exclude_first else 0  # Skip first task model if needed
+    
+    # Group all sample-wise similarities by gap
+    gap_to_sims: Dict[int, List[float]] = {}
+    
+    for i in range(start_idx, len(task_indices)):
+        for j in range(i + 1, len(task_indices)):
+            task_i = task_indices[i]
+            task_j = task_indices[j]
+            gap = task_j - task_i
+            
+            # Get representations for both models
+            rep_i = reps_dict[task_i]  # [N, D]
+            rep_j = reps_dict[task_j]  # [N, D]
+            
+            # Compute per-sample cosine similarity
+            rep_i_norm = F.normalize(rep_i, p=2, dim=1)
+            rep_j_norm = F.normalize(rep_j, p=2, dim=1)
+            cos_sims = (rep_i_norm * rep_j_norm).sum(dim=1)  # [N]
+            
+            if gap not in gap_to_sims:
+                gap_to_sims[gap] = []
+            gap_to_sims[gap].extend(cos_sims.tolist())
+    
+    # Compute mean and std for each gap
+    gaps = sorted(gap_to_sims.keys())
+    means = [np.mean(gap_to_sims[g]) for g in gaps]
+    stds = [np.std(gap_to_sims[g]) for g in gaps]
+    
+    return gaps, means, stds
+
+
+def plot_similarity_decay_profile(
+    reps_dict: Dict[int, torch.Tensor],
+    task_indices: List[int],
+    layer_name: str,
+    output_path: str,
+    exclude_first: bool = True
+):
+    """
+    Plot similarity decay profile: how similarity changes with task gap.
+    
+    X-axis: Number of tasks between two models (gap)
+    Y-axis: Average cosine similarity for model pairs with that gap (computed from raw representations)
+    """
+    gaps, means, stds = compute_similarity_by_gap(reps_dict, task_indices, exclude_first)
+    
+    fig, ax = plt.subplots(figsize=(10, 6))
+    
+    ax.errorbar(gaps, means, yerr=stds, marker='o', capsize=5)
+    
+    ax.set_title(f'Similarity Decay Profile\nLayer: {layer_name}')
+    ax.set_xlabel('Task Gap')
+    ax.set_ylabel('Cosine Similarity')
+    ax.set_ylim(0, 1)
+    
+    # X-axis ticks: integers only
+    ax.set_xticks(gaps)
+    ax.grid(True, linestyle='--', alpha=0.6)
+    
+    plt.tight_layout()
+    plt.savefig(output_path)
+    print(f"Similarity decay profile saved to {output_path}")
     plt.close()
 
 
@@ -107,13 +197,22 @@ def run_model_similarity(
                 all_reps[ln][task_idx] = reps[ln]
     
     # Compute and plot similarity matrix for each layer
+    profile_dir = os.path.join(output_dir, "similarity_decay_profiles")
+    os.makedirs(profile_dir, exist_ok=True)
+    
     for layer in layer_names:
         reps_list = [all_reps[layer][t] for t in sorted_task_indices]
         sim_matrix = compute_pairwise_similarity_matrix(reps_list)
         
         safe_layer_name = layer.replace(".", "_").replace("/", "_")
-        output_path = os.path.join(matrix_dir, f"similarity_matrix_{safe_layer_name}.png")
         
-        plot_similarity_matrix(sim_matrix, sorted_task_indices, layer, output_path)
+        # Plot similarity matrix heatmap
+        matrix_path = os.path.join(matrix_dir, f"similarity_matrix_{safe_layer_name}.png")
+        plot_similarity_matrix(sim_matrix, sorted_task_indices, layer, matrix_path)
+        
+        # Plot similarity decay profile (using raw representations)
+        profile_path = os.path.join(profile_dir, f"decay_profile_{safe_layer_name}.png")
+        plot_similarity_decay_profile(all_reps[layer], sorted_task_indices, layer, profile_path)
     
     print(f"All model similarity matrices saved to {matrix_dir}")
+    print(f"All similarity decay profiles saved to {profile_dir}")
