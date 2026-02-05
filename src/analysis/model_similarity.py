@@ -111,31 +111,33 @@ def compute_similarity_by_gap(
 
 
 def plot_similarity_decay_profile(
-    reps_dict: Dict[int, torch.Tensor],
+    all_reps: Dict[str, Dict[int, torch.Tensor]],
     task_indices: List[int],
-    layer_name: str,
+    layer_names: List[str],
     output_path: str,
     exclude_first: bool = True
 ):
     """
-    Plot similarity decay profile: how similarity changes with task gap.
+    Plot similarity decay profile for all layers on one figure.
     
     X-axis: Number of tasks between two models (gap)
     Y-axis: Average cosine similarity for model pairs with that gap (computed from raw representations)
     """
-    gaps, means, stds = compute_similarity_by_gap(reps_dict, task_indices, exclude_first)
-    
     fig, ax = plt.subplots(figsize=(10, 6))
     
-    ax.errorbar(gaps, means, yerr=stds, marker='o', capsize=5)
+    for layer_name in layer_names:
+        reps_dict = all_reps[layer_name]
+        gaps, means, stds = compute_similarity_by_gap(reps_dict, task_indices, exclude_first)
+        ax.errorbar(gaps, means, yerr=stds, marker='o', capsize=5, label=layer_name)
     
-    ax.set_title(f'Similarity Decay Profile\nLayer: {layer_name}')
+    ax.set_title('Similarity Decay Profile')
     ax.set_xlabel('Task Gap')
     ax.set_ylabel('Cosine Similarity')
     ax.set_ylim(0, 1)
     
-    # X-axis ticks: integers only
+    # X-axis ticks: integers only (use gaps from last layer)
     ax.set_xticks(gaps)
+    ax.legend()
     ax.grid(True, linestyle='--', alpha=0.6)
     
     plt.tight_layout()
@@ -197,9 +199,6 @@ def run_model_similarity(
                 all_reps[ln][task_idx] = reps[ln]
     
     # Compute and plot similarity matrix for each layer
-    profile_dir = os.path.join(output_dir, "similarity_decay_profiles")
-    os.makedirs(profile_dir, exist_ok=True)
-    
     for layer in layer_names:
         reps_list = [all_reps[layer][t] for t in sorted_task_indices]
         sim_matrix = compute_pairwise_similarity_matrix(reps_list)
@@ -209,10 +208,10 @@ def run_model_similarity(
         # Plot similarity matrix heatmap
         matrix_path = os.path.join(matrix_dir, f"similarity_matrix_{safe_layer_name}.png")
         plot_similarity_matrix(sim_matrix, sorted_task_indices, layer, matrix_path)
-        
-        # Plot similarity decay profile (using raw representations)
-        profile_path = os.path.join(profile_dir, f"decay_profile_{safe_layer_name}.png")
-        plot_similarity_decay_profile(all_reps[layer], sorted_task_indices, layer, profile_path)
+    
+    # Plot similarity decay profile for all layers on one figure
+    profile_path = os.path.join(output_dir, "similarity_decay_profile.png")
+    plot_similarity_decay_profile(all_reps, sorted_task_indices, layer_names, profile_path)
     
     print(f"All model similarity matrices saved to {matrix_dir}")
-    print(f"All similarity decay profiles saved to {profile_dir}")
+    print(f"Similarity decay profile saved to {profile_path}")
