@@ -28,6 +28,8 @@ def incremental_learning(
     first_task_only_memory: bool = False,
     ewc_lambda: float = 1000.0,
     gpm_threshold: float = 0.99,
+    lwf_lambda: float = 1.0,
+    lwf_temperature: float = 2.0,
     learning_mode: str = "til",
 ):
     """
@@ -44,7 +46,7 @@ def incremental_learning(
         optimizer: Optimizer for training.
         scheduler_config: Configuration for learning rate scheduler.
         batch_size: Batch size for training.
-        method: Training method ('normal', 'replay', 'ewc', 'gpm').
+        method: Training method ('normal', 'replay', 'ewc', 'gpm', 'lwf').
         memory_size: Size of memory buffer for replay method.
         save_dir: Directory to save checkpoints.
         run_comprehensive_eval: Whether to run comprehensive evaluation after all tasks.
@@ -57,6 +59,8 @@ def incremental_learning(
         first_task_only_memory: For replay, only store memory from first task.
         ewc_lambda: Lambda for EWC regularization.
         gpm_threshold: Threshold for GPM feature space.
+        lwf_lambda: Distillation strength for LwF.
+        lwf_temperature: Distillation temperature for LwF.
         learning_mode: 'til' for task-incremental or 'cil' for class-incremental.
     """
     # Backend/runtime optimizations
@@ -116,6 +120,11 @@ def incremental_learning(
         method_kwargs = {
             "gpm_threshold": gpm_threshold,
             "first_task_only_memory": first_task_only_memory,
+        }
+    elif method_lower == 'lwf':
+        method_kwargs = {
+            "lwf_lambda": lwf_lambda,
+            "lwf_temperature": lwf_temperature,
         }
 
     # Get method class and instantiate

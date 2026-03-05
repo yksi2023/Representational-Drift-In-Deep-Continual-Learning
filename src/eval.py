@@ -41,7 +41,6 @@ def evaluate(model, test_loader, criterion, device, active_classes_range=None):
             total += labels.size(0)
     avg_loss = total_loss / len(test_loader)
     accuracy = 100.0 * correct / total
-    print(f"Test Loss: {avg_loss:.4f}, Accuracy: {accuracy:.2f}%")
     return avg_loss, accuracy
 
 def plot_performance(online_results: List[float], retrospective_results: List[float], first_task_results: List[float], save_dir: str = None):
@@ -96,6 +95,7 @@ def comprehensive_evaluation(
     num_classes: int,
     increment: int,
     criterion: torch.nn.Module,
+    learning_mode: str = "til",
     save_dir: str = None,
 ) -> Dict[str, Dict[str, float]]:
     """
@@ -108,6 +108,7 @@ def comprehensive_evaluation(
         num_classes: Total number of classes
         increment: Number of classes per task
         criterion: Loss function
+        learning_mode: "til" for task-incremental eval, otherwise class-incremental eval
         save_dir: Optional directory to save evaluation results
         
     Returns:
@@ -136,7 +137,14 @@ def comprehensive_evaluation(
         )
         
         # Evaluate on this task
-        task_loss, task_accuracy = evaluate(model, test_loader, criterion, device)
+        task_range = (task_idx, task_idx + increment) if learning_mode == "til" else None
+        task_loss, task_accuracy = evaluate(
+            model,
+            test_loader,
+            criterion,
+            device,
+            active_classes_range=task_range,
+        )
         
         results[f"task_{task_num}"] = {
             "classes": f'{task_classes[0]}-{task_classes[-1]}',

@@ -16,7 +16,7 @@ def main():
     parser.add_argument("--lr", type=float, default=0.1)
     parser.add_argument("--optimizer", type=str, default="sgd", choices=["sgd", "adam"])
     parser.add_argument("--momentum", type=float, default=0.9)
-    parser.add_argument("--method", type=str, default="normal", choices=["normal", "replay", "ewc", "gpm"]) 
+    parser.add_argument("--method", type=str, default="normal", choices=["normal", "replay", "ewc", "gpm", "lwf"])
     parser.add_argument("--memory_size", type=int, default=5000)
     parser.add_argument("--first_task_only_memory", action="store_true", help="Only keep first task data in memory, do not add subsequent task data")
     parser.add_argument("--save_dir", type=str, default="experiments/fashion_mnist_incremental")
@@ -34,6 +34,8 @@ def main():
     parser.add_argument("--freeze_layers", type=str, default="", help="Comma-separated layer names to freeze among conv1,bn1,layer1,layer2,layer3,layer4,fc")
     parser.add_argument("--freeze_until", type=str, default="layer2", choices=[None, "conv1", "bn1", "layer1", "layer2", "layer3", "layer4", "fc"], help="Freeze all layers up to and including this layer")
     parser.add_argument("--ewc_lambda", type=float, default=1000.0, help="EWC regularization strength (only used when method=ewc)")
+    parser.add_argument("--lwf_lambda", type=float, default=1.0, help="LwF distillation strength (only used when method=lwf)")
+    parser.add_argument("--lwf_temperature", type=float, default=2.0, help="LwF distillation temperature (only used when method=lwf)")
     parser.add_argument("--learning_mode", type=str, default="til", choices=["til", "cil"], help="Learning mode: 'til' (task-incremental, masked output) or 'cil' (class-incremental, full output)")
     args = parser.parse_args()
 
@@ -120,6 +122,8 @@ def main():
         compile_model=args.compile,
         channels_last=args.channels_last,
         ewc_lambda=args.ewc_lambda,
+        lwf_lambda=args.lwf_lambda,
+        lwf_temperature=args.lwf_temperature,
         learning_mode=args.learning_mode,
     )
 

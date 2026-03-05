@@ -214,7 +214,9 @@ class BaseContinualMethod(ABC):
             comprehensive_evaluation(
                 self.model, self.online_results, self.first_task_results,
                 self.experiment_dataset, self.device, self.num_classes,
-                self.increment, self.criterion, self.save_dir
+                self.increment, self.criterion,
+                learning_mode=self.learning_mode,
+                save_dir=self.save_dir,
             )
     
     def _print_task_info(self, task_idx: int) -> None:
