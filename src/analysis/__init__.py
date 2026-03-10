@@ -13,14 +13,22 @@ plt.rcParams.update({
 })
 
 from .baseline_drift import run_baseline_drift
-from .model_similarity import run_model_similarity
+from .model_similarity import run_model_similarity, run_model_cka_similarity
 from .sample_similarity import run_sample_similarity
-from .drift_metrics import compute_metrics, compute_pairwise_similarity_matrix
+from .drift_metrics import (
+    compute_metrics,
+    compute_pairwise_similarity_matrix,
+    compute_linear_cka,
+    compute_pairwise_cka_matrix,
+)
 
 __all__ = [
     "run_baseline_drift",
     "run_model_similarity", 
+    "run_model_cka_similarity",
     "run_sample_similarity",
     "compute_metrics",
     "compute_pairwise_similarity_matrix",
+    "compute_linear_cka",
+    "compute_pairwise_cka_matrix",
 ]

@@ -15,7 +15,12 @@ import torch
 
 from src.models import FashionMNISTModel, ResNet18_Tiny, PretrainedResNet18
 from src.checkpoints import list_checkpoints
-from src.analysis import run_baseline_drift, run_model_similarity, run_sample_similarity
+from src.analysis import (
+    run_baseline_drift,
+    run_model_similarity,
+    run_model_cka_similarity,
+    run_sample_similarity,
+)
 from src.eval import plot_performance_from_files
 from datasets import IncrementalFashionMNIST, IncrementalTinyImageNet
 
@@ -129,8 +134,22 @@ def main():
         neuron_indices=neuron_indices,
     )
     
-    # 3. Sample-wise similarity matrices
-    print("\n[3/4] Running sample similarity analysis...")
+    # 3. Model pairwise CKA matrices
+    print("\n[3/5] Running model CKA similarity analysis...")
+    run_model_cka_similarity(
+        model=model,
+        probe_loader=probe_loader,
+        ckpt_dir=args.ckpt_dir,
+        layer_names=layer_names,
+        output_dir=args.output_dir,
+        device=device,
+        max_batches=args.max_batches,
+        use_amp=args.amp,
+        neuron_indices=neuron_indices,
+    )
+
+    # 4. Sample-wise similarity matrices
+    print("\n[4/5] Running sample similarity analysis...")
     run_sample_similarity(
         model=model,
         probe_loader=probe_loader,
@@ -143,8 +162,8 @@ def main():
         neuron_indices=neuron_indices,
     )
     
-    # 4. Performance plots
-    print("\n[4/4] Generating performance plots...")
+    # 5. Performance plots
+    print("\n[5/5] Generating performance plots...")
     try:
         plot_performance_from_files(args.ckpt_dir, args.output_dir)
     except FileNotFoundError as e:

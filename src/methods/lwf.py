@@ -59,7 +59,7 @@ class LwFMethod(BaseContinualMethod):
         use_cuda_amp = bool(self.use_amp and (self.device.type == "cuda"))
         scaler = torch.amp.GradScaler() if use_cuda_amp else None
 
-        old_classes = task_idx * self.increment
+        old_classes = self.increment
         use_distill = (task_idx > 0) and (self.teacher_model is not None) and (old_classes > 0)
 
         for epoch in range(self.epochs):

@@ -1,4 +1,5 @@
 import torch
+import torch.nn.functional as F
 import tqdm
 from typing import Dict, Any, Optional
 from src.methods.base import BaseContinualMethod
@@ -50,8 +51,6 @@ class GPMMethod(BaseContinualMethod):
                     grad_2d = grad
                 
                 if basis.size(0) == grad_2d.size(1):
-                    device = grad.device
-                    basis = basis.to(device)
                     proj = grad_2d @ basis @ basis.T
                     grad_2d = grad_2d - proj
                     module.weight.grad.data = grad_2d.reshape(original_shape)
@@ -147,6 +146,8 @@ class GPMMethod(BaseContinualMethod):
         self.gpm_memory = self._update_gpm_memory(rep_dict)
         
         if self.gpm_memory:
+            for name in self.gpm_memory:
+                self.gpm_memory[name] = self.gpm_memory[name].to(self.device)
             total_dims = sum(v.size(1) for v in self.gpm_memory.values())
             print(f"GPM memory updated: {len(self.gpm_memory)} layers, {total_dims} total basis vectors")
     
@@ -156,6 +157,7 @@ class GPMMethod(BaseContinualMethod):
         
         activations = {}
         hooks = []
+        layer_map = {}
         
         def get_activation(name):
             def hook(module, input, output):
@@ -167,6 +169,7 @@ class GPMMethod(BaseContinualMethod):
         
         for name, module in self.model.named_modules():
             if isinstance(module, (torch.nn.Linear, torch.nn.Conv2d)):
+                layer_map[name] = module
                 hook = module.register_forward_hook(get_activation(name))
                 hooks.append(hook)
         
@@ -185,14 +188,33 @@ class GPMMethod(BaseContinualMethod):
         rep_dict = {}
         for name, act_list in activations.items():
             act = torch.cat(act_list, dim=0)[:self.gpm_num_samples]
+            module = layer_map[name]
             
-            if act.dim() == 4:  # Conv layer
-                N, C, H, W = act.shape
-                act = act.permute(0, 2, 3, 1).reshape(-1, C)
-            elif act.dim() == 2:  # Linear layer
-                pass
-            else:
-                continue
+            if isinstance(module, torch.nn.Conv2d):
+                # Unfold to (N, C*k*k, L)
+                try:
+                    unfolded = F.unfold(
+                        act, 
+                        kernel_size=module.kernel_size,
+                        padding=module.padding,
+                        stride=module.stride,
+                        dilation=module.dilation
+                    )
+                    # unfolded: (N, C*k*k, L) -> (N, L, C*k*k) -> (N*L, C*k*k)
+                    act = unfolded.transpose(1, 2).reshape(-1, unfolded.size(1))
+                    
+                    # Randomly subsample if too large (optional, but good for memory)
+                    if act.size(0) > 100000:  # Heuristic threshold
+                        indices = torch.randperm(act.size(0))[:100000]
+                        act = act[indices]
+                        
+                except Exception as e:
+                    print(f"Error unfolding {name}: {e}")
+                    continue
+                    
+            elif isinstance(module, torch.nn.Linear):
+                if act.dim() > 2:
+                    act = act.reshape(-1, act.size(-1))
             
             rep_dict[name] = act
         
@@ -207,7 +229,7 @@ class GPMMethod(BaseContinualMethod):
             rep_matrix = rep_matrix.float()
             
             if self.gpm_memory is not None and name in self.gpm_memory:
-                existing_basis = self.gpm_memory[name]
+                existing_basis = self.gpm_memory[name].cpu()
                 proj = rep_matrix @ existing_basis @ existing_basis.T
                 rep_matrix = rep_matrix - proj
             
@@ -225,7 +247,7 @@ class GPMMethod(BaseContinualMethod):
                 new_basis = Vh[:k].T
                 
                 if self.gpm_memory is not None and name in self.gpm_memory:
-                    existing_basis = self.gpm_memory[name]
+                    existing_basis = self.gpm_memory[name].cpu()
                     combined = torch.cat([existing_basis, new_basis], dim=1)
                     Q, R = torch.linalg.qr(combined)
                     diag = torch.abs(torch.diag(R))
