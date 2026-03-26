@@ -1,17 +1,18 @@
 #Python
 __pycache__/
 
-# Data / Models
-experiments/**
+# cnn Data & Models
+cnn/__pycache__/
+cnn/experiments/**
 
-src/__pycache__/
-src/data/**
-data/**
-*.un~
-*.swp
-*~
-*.json
-*.ipynb
-*.pth
-*.sh
-test.py
+cnn/src/__pycache__/
+cnn/src/data/**
+cnn/data/**
+cnn/*.un~
+cnn/*.swp
+cnn/*~
+cnn/*.json
+cnn/*.ipynb
+cnn/*.pth
+cnn/*.sh
+cnn/test.py
