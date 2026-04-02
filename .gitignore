@@ -16,3 +16,6 @@ cnn/*.ipynb
 cnn/*.pth
 cnn/*.sh
 cnn/test.py
+
+multitask/
+
