@@ -30,6 +30,8 @@ class BaseMethod:
         save_dir='./experiments/rnn_drift',
         train_pool_size=200,
         train_seed=12345,
+        early_stop_patience=200,
+        early_stop_delta=1e-4,
     ):
         self.model = model
         self.tasks = tasks  # List of (task_name, task_generator_fn)
@@ -40,6 +42,8 @@ class BaseMethod:
         self.device = device
         self.save_dir = save_dir
         self.train_pool_size = train_pool_size
+        self.early_stop_patience = early_stop_patience
+        self.early_stop_delta = early_stop_delta
 
         # Tracking
         self.performance_history = {name: [] for name, _ in tasks}
@@ -101,11 +105,29 @@ class BaseMethod:
             # --- Train on current task (cycle through fixed pool) ---
             optimizer = optim.Adam(self.model.parameters(), lr=self.lr)
             train_pool = self.fixed_train_sets[task_name]
+            loss_window = []
+            best_avg_loss = float('inf')
+            patience_counter = 0
             for i in range(self.num_iterations):
                 trial = train_pool[i % self.train_pool_size]
                 loss = self.train_step(optimizer, trial)
 
-                if (i + 1) % 200 == 0:
+                # Early stopping check
+                loss_window.append(loss)
+                if len(loss_window) > 200:
+                    loss_window.pop(0)
+                if len(loss_window) == 200 and (i + 1) % 200 == 0:
+                    avg_loss = sum(loss_window) / len(loss_window)
+                    if best_avg_loss - avg_loss < self.early_stop_delta:
+                        patience_counter += 200
+                    else:
+                        patience_counter = 0
+                        best_avg_loss = avg_loss
+                    if patience_counter >= self.early_stop_patience:
+                        print(f"  Early stop at iter {i+1}, avg_loss={avg_loss:.4f}")
+                        break
+
+                if (i + 1) % 1000 == 0:
                     print(f"  Iter {i+1}/{self.num_iterations}, Loss: {loss:.4f}")
 
             # --- After training hook ---

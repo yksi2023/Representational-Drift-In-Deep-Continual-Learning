@@ -15,6 +15,8 @@ def sequential_learning(
     fisher_samples=200,
     train_pool_size=200,
     train_seed=12345,
+    early_stop_patience=200,
+    early_stop_delta=1e-4,
     memory_per_task=50,
     replay_num_tasks=1,
     lwf_lambda=1.0,
@@ -63,6 +65,8 @@ def sequential_learning(
         'save_dir': save_dir,
         'train_pool_size': train_pool_size,
         'train_seed': train_seed,
+        'early_stop_patience': early_stop_patience,
+        'early_stop_delta': early_stop_delta,
     }
 
     method_kwargs = {}

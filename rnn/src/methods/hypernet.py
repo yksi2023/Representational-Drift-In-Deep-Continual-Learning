@@ -103,11 +103,30 @@ class HyperNetMethod(BaseMethod):
             self.before_task(task_idx, task_name, task_gen_fn)
 
             train_pool = self.fixed_train_sets[task_name]
+            loss_window = []
+            best_avg_loss = float('inf')
+            patience_counter = 0
             for i in range(self.num_iterations):
                 loss_val = self._hnet_train_step(
                     optimizer, train_pool[i % self.train_pool_size], task_idx
                 )
-                if (i + 1) % 200 == 0:
+
+                # Early stopping check
+                loss_window.append(loss_val)
+                if len(loss_window) > 200:
+                    loss_window.pop(0)
+                if len(loss_window) == 200 and (i + 1) % 200 == 0:
+                    avg_loss = sum(loss_window) / len(loss_window)
+                    if best_avg_loss - avg_loss < self.early_stop_delta:
+                        patience_counter += 200
+                    else:
+                        patience_counter = 0
+                        best_avg_loss = avg_loss
+                    if patience_counter >= self.early_stop_patience:
+                        print(f"  Early stop at iter {i+1}, avg_loss={avg_loss:.4f}")
+                        break
+
+                if (i + 1) % 1000 == 0:
                     print(f"  Iter {i+1}/{self.num_iterations}, Loss: {loss_val:.4f}")
 
             # Snapshot hnet output for this task (for future regularisation)
