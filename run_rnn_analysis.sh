@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Analyze all exp1_* experiment directories under rnn/experiments/
 set -euo pipefail
-
+source activate drift
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RNN_DIR="${SCRIPT_DIR}/rnn"
 EXP_ROOT="${RNN_DIR}/experiments"

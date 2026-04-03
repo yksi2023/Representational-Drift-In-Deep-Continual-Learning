@@ -46,7 +46,7 @@ def plot_similarity_matrix(
         for i in range(len(task_names)):
             for j in range(len(task_names)):
                 ax.text(j, i, f'{matrix_np[i, j]:.2f}',
-                        ha="center", va="center", color="black", fontsize=6)
+                        ha="center", va="center", color="black", fontsize=9)
 
     ax.set_title(f'Representation {metric_label} Matrix\nProbe: {probe_task}')
     ax.set_xlabel('Model after Task')

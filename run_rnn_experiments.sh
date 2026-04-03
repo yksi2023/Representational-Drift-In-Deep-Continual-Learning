@@ -27,7 +27,6 @@ COMMON_ARGS=(
     --lr 0.001
     --train_pool_size 50
     --seed 0
-    --compile
 )
 
 # ── Helper: run one experiment and record wall time ──────────────────────────
@@ -59,34 +58,34 @@ cd "${RNN_DIR}"
 
 TOTAL_START=$(date +%s)
 
-# 1. Baseline (no CL regularization)
-run_one "normal" \
-    --method normal
-
-# 2. EWC
-run_one "ewc" \
-    --method ewc \
-    --ewc_lambda 100.0 \
-    --fisher_samples 200
-
-# 3. Replay
+# 1. Replay
 run_one "replay" \
     --method replay \
     --memory_per_task 50 \
     --replay_num_tasks 1
 
-# 4. LwF
-run_one "lwf" \
-    --method lwf \
-    --lwf_lambda 1.0 \
-    --lwf_temperature 2.0
-
-# 5. HyperNet
+# 2. HyperNet
 run_one "hypernet" \
     --method hypernet \
     --hnet_beta 0.01 \
     --hnet_chunks 10 \
     --hnet_hidden 128
+
+# 3. EWC
+run_one "ewc" \
+    --method ewc \
+    --ewc_lambda 100.0 \
+    --fisher_samples 200
+
+# 4. Baseline (no CL regularization)
+run_one "normal" \
+    --method normal
+
+# 5. LwF
+run_one "lwf" \
+    --method lwf \
+    --lwf_lambda 1.0 \
+    --lwf_temperature 2.0
 
 TOTAL_END=$(date +%s)
 TOTAL_ELAPSED=$(( TOTAL_END - TOTAL_START ))

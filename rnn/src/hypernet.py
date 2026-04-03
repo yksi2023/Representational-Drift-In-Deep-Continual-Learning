@@ -109,19 +109,30 @@ class ChunkedHyperNetwork(nn.Module):
         full = torch.cat(chunks, dim=-1)                              # (padded_total,)
         return full[:self.target_num_params]
 
-    def generate_and_load(self, task_emb: torch.Tensor, target_model: nn.Module, param_info):
-        """Generate weights and load them into the target model (in-place)."""
+    def generate_params_dict(self, task_emb: torch.Tensor, param_info):
+        """Generate weights as a dict (keeps computation graph for backprop).
+
+        Returns:
+            dict mapping parameter name -> tensor (differentiable).
+        """
         flat_weights = self.forward(task_emb)
+        params = {}
         offset = 0
         for name, shape in param_info:
             numel = 1
             for s in shape:
                 numel *= s
-            param_data = flat_weights[offset:offset + numel].view(shape)
-            # Navigate to the parameter and set its data
+            params[name] = flat_weights[offset:offset + numel].view(shape)
+            offset += numel
+        return params
+
+    def generate_and_load(self, task_emb: torch.Tensor, target_model: nn.Module, param_info):
+        """Generate weights and load into the target model (in-place).
+        NOTE: Breaks computation graph. Use only for evaluation/checkpointing."""
+        params = self.generate_params_dict(task_emb, param_info)
+        for name, data in params.items():
             parts = name.split('.')
             mod = target_model
             for p in parts[:-1]:
                 mod = getattr(mod, p)
-            getattr(mod, parts[-1]).data.copy_(param_data)
-            offset += numel
+            getattr(mod, parts[-1]).data.copy_(data.detach())

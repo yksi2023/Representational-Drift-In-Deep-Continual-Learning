@@ -110,7 +110,7 @@ def _plot_matrix_heatmap(
                 if not np.isnan(val):
                     text = f'{val:.2f}' if val < 10 else f'{val:.1f}'
                     ax.text(j, i, text, ha="center", va="center",
-                            color="black", fontsize=5)
+                            color="black", fontsize=9)
 
     ax.set_title(title)
     ax.set_xlabel("After Training on Task")

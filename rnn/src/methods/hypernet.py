@@ -134,18 +134,21 @@ class HyperNetMethod(BaseMethod):
         return self.performance_history, self.representations_history
 
     def _hnet_train_step(self, optimizer, trial, task_idx):
-        """One optimisation step: generate weights → forward → task loss + reg."""
+        """One optimisation step: generate weights → functional forward → task loss + reg."""
         self.model.train()
         self.hnet.train()
         optimizer.zero_grad()
 
-        # Generate weights and load into target model
+        # Generate weights (differentiable — stays in computation graph)
         task_emb = self.task_embs[task_idx]
-        self._load_generated_weights(task_emb)
+        params_dict = self.hnet.generate_params_dict(task_emb, self.param_info)
 
-        # Task loss
+        # Functional forward: uses generated weights WITHOUT breaking the graph
         x, y, mask = trial.to_tensor(device=self.device)
-        outputs = self.model(x, return_all_states=False)
+        outputs = torch.func.functional_call(
+            self.model, params_dict, (x,),
+            kwargs={'return_all_states': False},
+        )
         task_loss = compute_loss(outputs, y, mask,
                                  loss_type=trial.config.get('loss_type', 'cross_entropy'))
 
