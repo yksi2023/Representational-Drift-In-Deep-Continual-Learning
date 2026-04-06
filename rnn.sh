@@ -22,8 +22,8 @@ COMMON_ARGS=(
     --sigma_rec 0.05
     --activation softplus
     --w_rec_init diag
-    --num_iterations 20000
-    --batch_size 256
+    --num_iterations 5000
+    --batch_size 1024
     --lr 0.001
     --train_pool_size 50
     --seed 0
@@ -67,7 +67,7 @@ run_one "replay" \
 # 2. HyperNet
 run_one "hypernet" \
     --method hypernet \
-    --hnet_beta 0.01 \
+    --hnet_beta 0.5 \
     --hnet_chunks 10 \
     --hnet_hidden 128
 

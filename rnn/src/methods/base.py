@@ -107,25 +107,31 @@ class BaseMethod:
             train_pool = self.fixed_train_sets[task_name]
             loss_window = []
             best_avg_loss = float('inf')
+            best_model_state = None
             patience_counter = 0
             for i in range(self.num_iterations):
                 trial = train_pool[i % self.train_pool_size]
                 loss = self.train_step(optimizer, trial)
 
                 # Early stopping check
-                loss_window.append(loss)
-                if len(loss_window) > 200:
-                    loss_window.pop(0)
-                if len(loss_window) == 200 and (i + 1) % 200 == 0:
-                    avg_loss = sum(loss_window) / len(loss_window)
-                    if best_avg_loss - avg_loss < self.early_stop_delta:
-                        patience_counter += 200
-                    else:
-                        patience_counter = 0
-                        best_avg_loss = avg_loss
-                    if patience_counter >= self.early_stop_patience:
-                        print(f"  Early stop at iter {i+1}, avg_loss={avg_loss:.4f}")
-                        break
+                if self.early_stop_patience > 0:
+                    loss_window.append(loss)
+                    if len(loss_window) > 100:
+                        loss_window.pop(0)
+                    if len(loss_window) == 100 and (i + 1) % 100 == 0:
+                        avg_loss = sum(loss_window) / len(loss_window)
+                        if best_avg_loss - avg_loss < self.early_stop_delta:
+                            patience_counter += 100
+                        else:
+                            patience_counter = 0
+                            best_avg_loss = avg_loss
+                            best_model_state = {k: v.cpu().clone() for k, v in self.model.state_dict().items()}
+                        if patience_counter >= self.early_stop_patience:
+                            print(f"  Early stop at iter {i+1}, avg_loss={avg_loss:.4f}")
+                            if best_model_state is not None:
+                                self.model.load_state_dict({k: v.to(self.device) for k, v in best_model_state.items()})
+                                print(f"  Restored best model (avg_loss={best_avg_loss:.4f})")
+                            break
 
                 if (i + 1) % 1000 == 0:
                     print(f"  Iter {i+1}/{self.num_iterations}, Loss: {loss:.4f}")

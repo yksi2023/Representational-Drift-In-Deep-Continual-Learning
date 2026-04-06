@@ -35,8 +35,8 @@ def main():
     parser.add_argument("--hnet_beta", type=float, default=0.01, help="Output regularisation strength")
     parser.add_argument("--tasks", type=str, nargs="+", default=DEFAULT_TASKS,
                         help=f"Task names to learn sequentially. Default: 18 tasks (excludes dmcgo/dmcnogo). Available: {DEFAULT_TASKS}")
-    parser.add_argument("--early_stop_patience", type=int, default=1000, help="Early stop if no improvement for this many iters (0=disable)")
-    parser.add_argument("--early_stop_delta", type=float, default=1e-4, help="Min loss improvement to reset patience")
+    parser.add_argument("--early_stop_patience", type=int, default=500, help="Early stop if no improvement for this many iters (0=disable)")
+    parser.add_argument("--early_stop_delta", type=float, default=1e-3, help="Min loss improvement to reset patience")
     parser.add_argument("--train_pool_size", type=int, default=200, help="Number of pre-generated training batches per task")
     parser.add_argument("--train_seed", type=int, default=12345, help="Base seed for training set generation (must differ from test seed=42)")
     parser.add_argument("--save_dir", type=str, default="experiments/rnn_drift")

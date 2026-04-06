@@ -78,7 +78,7 @@ class HyperNetMethod(BaseMethod):
             predicted = self.hnet(self.task_embs[i])
             target = self.stored_targets[i]
             reg += torch.nn.functional.mse_loss(predicted, target)
-        return reg / current_task_idx
+        return reg
 
     # ------------------------------------------------------------------
     # Training
@@ -96,8 +96,8 @@ class HyperNetMethod(BaseMethod):
             # Create embedding for new task
             task_emb = self._create_task_emb()
 
-            # Optimiser: hnet params + all task embeddings (including new one)
-            opt_params = list(self.hnet.parameters()) + self.task_embs
+            # Optimiser: hnet params + current task embedding only (old embeddings frozen)
+            opt_params = list(self.hnet.parameters()) + [task_emb]
             optimizer = optim.Adam(opt_params, lr=self.lr)
 
             self.before_task(task_idx, task_name, task_gen_fn)
@@ -105,6 +105,8 @@ class HyperNetMethod(BaseMethod):
             train_pool = self.fixed_train_sets[task_name]
             loss_window = []
             best_avg_loss = float('inf')
+            best_hnet_state = None
+            best_emb_states = None
             patience_counter = 0
             for i in range(self.num_iterations):
                 loss_val = self._hnet_train_step(
@@ -112,19 +114,27 @@ class HyperNetMethod(BaseMethod):
                 )
 
                 # Early stopping check
-                loss_window.append(loss_val)
-                if len(loss_window) > 200:
-                    loss_window.pop(0)
-                if len(loss_window) == 200 and (i + 1) % 200 == 0:
-                    avg_loss = sum(loss_window) / len(loss_window)
-                    if best_avg_loss - avg_loss < self.early_stop_delta:
-                        patience_counter += 200
-                    else:
-                        patience_counter = 0
-                        best_avg_loss = avg_loss
-                    if patience_counter >= self.early_stop_patience:
-                        print(f"  Early stop at iter {i+1}, avg_loss={avg_loss:.4f}")
-                        break
+                if self.early_stop_patience > 0:
+                    loss_window.append(loss_val)
+                    if len(loss_window) > 100:
+                        loss_window.pop(0)
+                    if len(loss_window) == 100 and (i + 1) % 100 == 0:
+                        avg_loss = sum(loss_window) / len(loss_window)
+                        if best_avg_loss - avg_loss < self.early_stop_delta:
+                            patience_counter += 100
+                        else:
+                            patience_counter = 0
+                            best_avg_loss = avg_loss
+                            best_hnet_state = {k: v.cpu().clone() for k, v in self.hnet.state_dict().items()}
+                            best_emb_states = [e.data.cpu().clone() for e in self.task_embs]
+                        if patience_counter >= self.early_stop_patience:
+                            print(f"  Early stop at iter {i+1}, avg_loss={avg_loss:.4f}")
+                            if best_hnet_state is not None:
+                                self.hnet.load_state_dict({k: v.to(self.device) for k, v in best_hnet_state.items()})
+                                for e, s in zip(self.task_embs, best_emb_states):
+                                    e.data.copy_(s.to(self.device))
+                                print(f"  Restored best hnet (avg_loss={best_avg_loss:.4f})")
+                            break
 
                 if (i + 1) % 1000 == 0:
                     print(f"  Iter {i+1}/{self.num_iterations}, Loss: {loss_val:.4f}")
