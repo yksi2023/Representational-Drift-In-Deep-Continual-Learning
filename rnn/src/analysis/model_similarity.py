@@ -13,8 +13,7 @@ import matplotlib.pyplot as plt
 
 from src.drift_metrics import (
     compute_pairwise_similarity_matrix,
-    compute_pairwise_cka_matrix,
-    compute_linear_cka,
+    compute_pairwise_pearson_matrix,
 )
 from src.analysis.baseline_drift import _load_reps_from_npz
 
@@ -58,12 +57,17 @@ def plot_similarity_matrix(
     plt.close()
 
 
-def compute_similarity_by_gap(
+def _pairwise_similarity_by_gap(
     reps_dict: Dict[int, torch.Tensor],
     task_indices: List[int],
+    metric: str = "cosine",
     exclude_first: bool = True,
 ) -> Tuple[List[int], List[float], List[float]]:
-    """Compute average cosine similarity grouped by task gap."""
+    """Compute average similarity grouped by task gap.
+
+    Args:
+        metric: "cosine" or "pearson"
+    """
     start_idx = 1 if exclude_first else 0
     gap_to_sims: Dict[int, List[float]] = {}
 
@@ -72,39 +76,19 @@ def compute_similarity_by_gap(
             gap = task_indices[j] - task_indices[i]
             rep_i = reps_dict[task_indices[i]]
             rep_j = reps_dict[task_indices[j]]
+            if metric == "pearson":
+                rep_i = rep_i - rep_i.mean(dim=1, keepdim=True)
+                rep_j = rep_j - rep_j.mean(dim=1, keepdim=True)
             rep_i_norm = F.normalize(rep_i, p=2, dim=1)
             rep_j_norm = F.normalize(rep_j, p=2, dim=1)
-            cos_sims = (rep_i_norm * rep_j_norm).sum(dim=1)
+            sims = (rep_i_norm * rep_j_norm).sum(dim=1)
             if gap not in gap_to_sims:
                 gap_to_sims[gap] = []
-            gap_to_sims[gap].extend(cos_sims.tolist())
+            gap_to_sims[gap].extend(sims.tolist())
 
     gaps = sorted(gap_to_sims.keys())
     means = [np.mean(gap_to_sims[g]) for g in gaps]
     stds = [np.std(gap_to_sims[g]) for g in gaps]
-    return gaps, means, stds
-
-
-def compute_cka_by_gap(
-    reps_dict: Dict[int, torch.Tensor],
-    task_indices: List[int],
-    exclude_first: bool = True,
-) -> Tuple[List[int], List[float], List[float]]:
-    """Compute average CKA grouped by task gap."""
-    start_idx = 1 if exclude_first else 0
-    gap_to_cka: Dict[int, List[float]] = {}
-
-    for i in range(start_idx, len(task_indices)):
-        for j in range(i + 1, len(task_indices)):
-            gap = task_indices[j] - task_indices[i]
-            cka_val = compute_linear_cka(reps_dict[task_indices[i]], reps_dict[task_indices[j]])
-            if gap not in gap_to_cka:
-                gap_to_cka[gap] = []
-            gap_to_cka[gap].append(cka_val)
-
-    gaps = sorted(gap_to_cka.keys())
-    means = [np.mean(gap_to_cka[g]) for g in gaps]
-    stds = [np.std(gap_to_cka[g]) for g in gaps]
     return gaps, means, stds
 
 
@@ -118,14 +102,9 @@ def _plot_decay_profile(
     """Plot decay profile (similarity vs task gap)."""
     fig, ax = plt.subplots(figsize=(10, 6))
 
-    if metric == "cosine":
-        gaps, means, stds = compute_similarity_by_gap(reps_dict, task_indices)
-        ylabel = "Cosine Similarity"
-        title = f"Similarity Decay Profile — probe: {probe_task}"
-    else:
-        gaps, means, stds = compute_cka_by_gap(reps_dict, task_indices)
-        ylabel = "CKA"
-        title = f"CKA Decay Profile — probe: {probe_task}"
+    gaps, means, stds = _pairwise_similarity_by_gap(reps_dict, task_indices, metric=metric)
+    ylabel = "Cosine Similarity" if metric == "cosine" else "Pearson Correlation"
+    title = f"{ylabel} Decay Profile — probe: {probe_task}"
 
     ax.errorbar(gaps, means, yerr=stds, marker='o', capsize=5)
     ax.set_title(title)
@@ -149,7 +128,7 @@ def run_model_similarity(
     output_dir: str,
 ) -> None:
     """
-    Generate model pairwise cosine similarity matrices and decay profiles.
+    Generate model pairwise similarity matrices (cosine + Pearson) and decay profiles.
 
     Args:
         exp_dir: Experiment directory containing representations/.
@@ -162,49 +141,21 @@ def run_model_similarity(
     os.makedirs(matrix_dir, exist_ok=True)
 
     for probe_task in probe_tasks:
-        print(f"  Cosine similarity for probe: {probe_task}")
         raw_reps = _load_reps_from_npz(reps_dir, probe_task)
         sorted_indices = sorted(raw_reps.keys())
         reps_dict = {k: torch.from_numpy(v).float() for k, v in raw_reps.items()}
         reps_list = [reps_dict[t] for t in sorted_indices]
 
-        sim_matrix = compute_pairwise_similarity_matrix(reps_list)
-        matrix_path = os.path.join(matrix_dir, f"cosine_matrix_{probe_task}.png")
-        plot_similarity_matrix(sim_matrix, task_names, probe_task, matrix_path)
+        for metric, label, matrix_fn in [
+            ("cosine", "Cosine Similarity", compute_pairwise_similarity_matrix),
+            ("pearson", "Pearson Correlation", compute_pairwise_pearson_matrix),
+        ]:
+            print(f"  {label} for probe: {probe_task}")
+            sim_matrix = matrix_fn(reps_list)
+            matrix_path = os.path.join(matrix_dir, f"{metric}_matrix_{probe_task}.png")
+            plot_similarity_matrix(sim_matrix, task_names, probe_task, matrix_path,
+                                   metric_label=label)
 
-        profile_path = os.path.join(output_dir, f"cosine_decay_{probe_task}.png")
-        _plot_decay_profile(reps_dict, sorted_indices, probe_task, profile_path, metric="cosine")
-
-
-def run_model_cka_similarity(
-    exp_dir: str,
-    probe_tasks: List[str],
-    task_names: List[str],
-    output_dir: str,
-) -> None:
-    """
-    Generate model pairwise CKA matrices and decay profiles.
-
-    Args:
-        exp_dir: Experiment directory containing representations/.
-        probe_tasks: Which tasks' representations to analyze.
-        task_names: Ordered list of all task names.
-        output_dir: Directory to save results.
-    """
-    reps_dir = os.path.join(exp_dir, "representations")
-    matrix_dir = os.path.join(output_dir, "model_cka_matrices")
-    os.makedirs(matrix_dir, exist_ok=True)
-
-    for probe_task in probe_tasks:
-        print(f"  CKA for probe: {probe_task}")
-        raw_reps = _load_reps_from_npz(reps_dir, probe_task)
-        sorted_indices = sorted(raw_reps.keys())
-        reps_dict = {k: torch.from_numpy(v).float() for k, v in raw_reps.items()}
-        reps_list = [reps_dict[t] for t in sorted_indices]
-
-        cka_matrix = compute_pairwise_cka_matrix(reps_list)
-        matrix_path = os.path.join(matrix_dir, f"cka_matrix_{probe_task}.png")
-        plot_similarity_matrix(cka_matrix, task_names, probe_task, matrix_path, metric_label="CKA")
-
-        profile_path = os.path.join(output_dir, f"cka_decay_{probe_task}.png")
-        _plot_decay_profile(reps_dict, sorted_indices, probe_task, profile_path, metric="cka")
+            profile_path = os.path.join(output_dir, f"{metric}_decay_{probe_task}.png")
+            _plot_decay_profile(reps_dict, sorted_indices, probe_task, profile_path,
+                                metric=metric)

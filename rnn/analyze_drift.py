@@ -2,9 +2,10 @@
 
 This script provides comprehensive drift analysis including:
 1. Baseline drift metrics (cosine similarity, L2 distance over tasks)
-2. Model pairwise similarity matrices (cosine + CKA)
+2. Model pairwise cosine similarity matrices
 3. Sample-wise similarity matrices
-4. Performance plots (from saved performance_history.json)
+4. Temporal hidden state similarity matrices
+5. Performance plots (from saved performance_history.json)
 
 Representations are loaded from pre-saved .npz files (generated during training),
 so no GPU re-extraction is needed.
@@ -21,8 +22,8 @@ import sys
 from src.analysis import (
     run_baseline_drift,
     run_model_similarity,
-    run_model_cka_similarity,
     run_sample_similarity,
+    run_temporal_similarity,
     plot_rnn_performance,
 )
 
@@ -41,6 +42,8 @@ def parse_args():
                         help="Random seed for neuron sampling reproducibility")
     parser.add_argument("--skip_sample_sim", action="store_true",
                         help="Skip sample similarity matrices (can be slow for many tasks)")
+    parser.add_argument("--hidden_size", type=int, default=256,
+                        help="RNN hidden size (needed to reshape flat reps for temporal analysis)")
     return parser.parse_args()
 
 
@@ -131,18 +134,9 @@ def main():
         output_dir=args.output_dir,
     )
 
-    # 3. Model pairwise CKA matrices
-    print("\n[3/5] Running model CKA similarity analysis...")
-    run_model_cka_similarity(
-        exp_dir=args.exp_dir,
-        probe_tasks=args.probe_tasks,
-        task_names=task_names,
-        output_dir=args.output_dir,
-    )
-
-    # 4. Sample-wise similarity matrices
+    # 3. Sample-wise similarity matrices
     if not args.skip_sample_sim:
-        print("\n[4/5] Running sample similarity analysis...")
+        print("\n[3/5] Running sample similarity analysis...")
         run_sample_similarity(
             exp_dir=args.exp_dir,
             probe_tasks=args.probe_tasks,
@@ -150,7 +144,17 @@ def main():
             output_dir=args.output_dir,
         )
     else:
-        print("\n[4/5] Skipping sample similarity (--skip_sample_sim).")
+        print("\n[3/5] Skipping sample similarity (--skip_sample_sim).")
+
+    # 4. Temporal hidden state similarity
+    print("\n[4/5] Running temporal hidden state similarity...")
+    run_temporal_similarity(
+        exp_dir=args.exp_dir,
+        probe_tasks=args.probe_tasks,
+        task_names=task_names,
+        output_dir=args.output_dir,
+        hidden_size=args.hidden_size,
+    )
 
     # 5. Performance plots
     print("\n[5/5] Generating performance plots...")

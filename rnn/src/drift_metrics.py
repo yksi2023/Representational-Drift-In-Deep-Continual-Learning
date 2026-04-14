@@ -71,6 +71,34 @@ def compute_pairwise_similarity_matrix(reps_list: List[torch.Tensor]) -> torch.T
     return sim_matrix
 
 
+def compute_pairwise_pearson_matrix(reps_list: List[torch.Tensor]) -> torch.Tensor:
+    """
+    Compute pairwise Pearson correlation matrix between checkpoint representations.
+
+    Pearson correlation = cosine similarity of mean-centred vectors.
+
+    Args:
+        reps_list: List of T tensors, each of shape [N, D].
+
+    Returns:
+        Correlation matrix of shape [T, T].
+    """
+    num_tasks = len(reps_list)
+    corr_matrix = torch.zeros(num_tasks, num_tasks)
+
+    for i in range(num_tasks):
+        for j in range(num_tasks):
+            if i == j:
+                corr_matrix[i, j] = 1.0
+            else:
+                a = reps_list[i] - reps_list[i].mean(dim=1, keepdim=True)
+                b = reps_list[j] - reps_list[j].mean(dim=1, keepdim=True)
+                corr = F.cosine_similarity(a, b, dim=1, eps=1e-8)
+                corr_matrix[i, j] = corr.mean().item()
+
+    return corr_matrix
+
+
 def compute_linear_cka(a: torch.Tensor, b: torch.Tensor, eps: float = 1e-12) -> float:
     """
     Compute linear CKA between two representation matrices.

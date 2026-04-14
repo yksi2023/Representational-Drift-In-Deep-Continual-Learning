@@ -13,14 +13,15 @@ plt.rcParams.update({
 })
 
 from .baseline_drift import run_baseline_drift
-from .model_similarity import run_model_similarity, run_model_cka_similarity
+from .model_similarity import run_model_similarity
 from .sample_similarity import run_sample_similarity
 from .performance import plot_rnn_performance
+from .temporal_similarity import run_temporal_similarity
 
 __all__ = [
     "run_baseline_drift",
     "run_model_similarity",
-    "run_model_cka_similarity",
     "run_sample_similarity",
     "plot_rnn_performance",
+    "run_temporal_similarity",
 ]

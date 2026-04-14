@@ -13,18 +13,22 @@ import matplotlib.pyplot as plt
 from src.analysis.baseline_drift import _load_reps_from_npz
 
 
-def compute_sample_similarity_matrix(reps: torch.Tensor) -> torch.Tensor:
+def compute_sample_similarity_matrix(reps: torch.Tensor, metric: str = "cosine") -> torch.Tensor:
     """
-    Compute pairwise cosine similarity matrix between all samples.
+    Compute pairwise similarity matrix between all samples.
 
     Args:
         reps: Tensor of shape [N, D]
+        metric: "cosine" or "pearson"
 
     Returns:
         Similarity matrix of shape [N, N].
     """
-    reps_norm = F.normalize(reps, p=2, dim=1)
-    return torch.mm(reps_norm, reps_norm.t())
+    r = reps
+    if metric == "pearson":
+        r = r - r.mean(dim=1, keepdim=True)
+    r_norm = F.normalize(r, p=2, dim=1)
+    return torch.mm(r_norm, r_norm.t())
 
 
 def plot_sample_similarity_matrix(
@@ -32,17 +36,18 @@ def plot_sample_similarity_matrix(
     task_idx: int,
     probe_task: str,
     output_path: str,
+    metric_label: str = "Cosine Similarity",
 ):
     """Plot sample-wise similarity matrix as a colormap."""
     fig, ax = plt.subplots(figsize=(10, 8))
 
     matrix_np = sim_matrix.numpy()
-    im = ax.imshow(matrix_np, cmap='viridis', vmin=0, vmax=1, aspect='auto')
+    im = ax.imshow(matrix_np, cmap='viridis', vmin=-1, vmax=1, aspect='auto')
 
     cbar = ax.figure.colorbar(im, ax=ax, shrink=0.8)
-    cbar.ax.set_ylabel('Cosine Similarity', rotation=-90, va="bottom")
+    cbar.ax.set_ylabel(metric_label, rotation=-90, va="bottom")
 
-    ax.set_title(f'Sample Similarity — Model after Task {task_idx}\nProbe: {probe_task}')
+    ax.set_title(f'Sample {metric_label} — Model after Task {task_idx}\nProbe: {probe_task}')
     ax.set_xlabel('Sample Index')
     ax.set_ylabel('Sample Index')
 
@@ -58,10 +63,7 @@ def run_sample_similarity(
     output_dir: str,
 ) -> None:
     """
-    Analyze sample-wise similarity matrices for each checkpoint.
-
-    For each model checkpoint, loads pre-saved representations, computes
-    sample-wise cosine similarity, and plots the matrix.
+    Analyze sample-wise similarity matrices (cosine + Pearson) for each checkpoint.
 
     Args:
         exp_dir: Experiment directory containing representations/.
@@ -83,10 +85,12 @@ def run_sample_similarity(
 
         for task_idx in sorted_indices:
             reps = torch.from_numpy(raw_reps[task_idx]).float()
-            sim_matrix = compute_sample_similarity_matrix(reps)
-
             task_label = task_names[task_idx] if task_idx < len(task_names) else f"task_{task_idx}"
-            output_path = os.path.join(probe_dir, f"sample_sim_after_{task_label}.png")
-            plot_sample_similarity_matrix(sim_matrix, task_idx, probe_task, output_path)
 
-        print(f"    Saved {len(sorted_indices)} matrices to {probe_dir}")
+            for metric, label in [("cosine", "Cosine Similarity"), ("pearson", "Pearson Correlation")]:
+                sim_matrix = compute_sample_similarity_matrix(reps, metric=metric)
+                output_path = os.path.join(probe_dir, f"sample_{metric}_after_{task_label}.png")
+                plot_sample_similarity_matrix(sim_matrix, task_idx, probe_task, output_path,
+                                              metric_label=label)
+
+        print(f"    Saved matrices to {probe_dir}")

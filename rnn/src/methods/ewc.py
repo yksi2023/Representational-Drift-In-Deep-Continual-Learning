@@ -48,8 +48,7 @@ class EWCMethod(BaseMethod):
         super().__init__(**kwargs)
         self.ewc_lambda = ewc_lambda
         self.fisher_samples = fisher_samples
-        self.fisher_dict = None
-        self.optpar_dict = None
+        self.ewc_tasks = []  # list of (fisher_dict, optpar_dict), one per completed task
 
     def train_step(self, optimizer, trial):
         """Training step with EWC penalty added to the task loss."""
@@ -60,8 +59,8 @@ class EWCMethod(BaseMethod):
         outputs = self.model(x, return_all_states=False)
         loss = compute_loss(outputs, y, mask, loss_type=trial.config.get('loss_type', 'cross_entropy'))
 
-        if self.fisher_dict is not None and self.optpar_dict is not None:
-            loss += ewc_penalty(self.model, self.fisher_dict, self.optpar_dict, self.ewc_lambda)
+        for fisher_dict, optpar_dict in self.ewc_tasks:
+            loss += ewc_penalty(self.model, fisher_dict, optpar_dict, self.ewc_lambda)
 
         loss.backward()
         torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=1.0)
@@ -69,16 +68,9 @@ class EWCMethod(BaseMethod):
         return loss.item()
 
     def after_task(self, task_idx, task_name, task_gen_fn):
-        """Compute and accumulate Fisher Information after each task."""
-        print(f"  Computing Fisher Information for {task_name}...")
-        new_fisher, new_optpar = compute_fisher_information(
+        """Compute Fisher Information after each task and store separately."""
+        print(f"  Computing Fisher Information for {task_name} (total EWC terms: {task_idx + 1})...")
+        fisher, optpar = compute_fisher_information(
             self.model, task_gen_fn, self.config, self.fisher_samples, self.device
         )
-
-        if self.fisher_dict is None:
-            self.fisher_dict = new_fisher
-            self.optpar_dict = new_optpar
-        else:
-            for name in self.fisher_dict:
-                self.fisher_dict[name] += new_fisher[name]
-                self.optpar_dict[name] = new_optpar[name]
+        self.ewc_tasks.append((fisher, optpar))
