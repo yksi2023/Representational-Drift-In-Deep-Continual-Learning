@@ -16,9 +16,8 @@ def plot_rnn_performance(exp_dir: str, output_dir: str) -> None:
     Plot performance figures from saved performance_history.json.
 
     Generates:
-    1. Loss matrix heatmap (eval_task x trained_task)
-    2. Accuracy matrix heatmap
-    3. Per-task accuracy over time (line plot)
+    1. Accuracy matrix heatmap
+    2. First-task retention plot (accuracy + loss)
 
     Args:
         exp_dir: Experiment directory containing performance_history.json.
@@ -36,31 +35,17 @@ def plot_rnn_performance(exp_dir: str, output_dir: str) -> None:
     task_names = list(perf.keys())
     num_tasks = len(perf[task_names[0]])  # number of training stages
 
-    # Build matrices: rows = eval task, cols = after training on task_i
-    loss_matrix = np.full((len(task_names), num_tasks), np.nan)
+    # Build accuracy matrix: rows = eval task, cols = after training on task_i
     acc_matrix = np.full((len(task_names), num_tasks), np.nan)
-    fix_acc_matrix = np.full((len(task_names), num_tasks), np.nan)
 
     for i, task_name in enumerate(task_names):
         for j, entry in enumerate(perf[task_name]):
             if entry is None:
                 continue
-            loss_matrix[i, j] = entry.get('loss', np.nan)
             acc_val = entry.get('accuracy')
             acc_matrix[i, j] = acc_val if acc_val is not None else np.nan
-            fix_val = entry.get('fix_accuracy')
-            fix_acc_matrix[i, j] = fix_val if fix_val is not None else np.nan
 
-    # --- 1. Loss heatmap ---
-    _plot_matrix_heatmap(
-        loss_matrix, task_names, task_names,
-        title="Loss Matrix (eval_task x trained_after)",
-        cbar_label="Loss",
-        output_path=os.path.join(output_dir, "loss_matrix.png"),
-        vmin=0, vmax=None, cmap='YlOrRd',
-    )
-
-    # --- 2. Accuracy heatmap ---
+    # --- 1. Accuracy heatmap ---
     _plot_matrix_heatmap(
         acc_matrix, task_names, task_names,
         title="Accuracy Matrix (eval_task x trained_after)",
@@ -69,10 +54,7 @@ def plot_rnn_performance(exp_dir: str, output_dir: str) -> None:
         vmin=0, vmax=1, cmap='viridis',
     )
 
-    # --- 3. Per-task accuracy line plot ---
-    _plot_per_task_accuracy(acc_matrix, task_names, output_dir)
-
-    # --- 4. First-task retention plot ---
+    # --- 2. First-task retention plot ---
     _plot_first_task_retention(perf, task_names, output_dir)
 
     print(f"  Performance plots saved to {output_dir}")
@@ -117,46 +99,6 @@ def _plot_matrix_heatmap(
     ax.set_ylabel("Evaluated Task")
 
     plt.tight_layout()
-    plt.savefig(output_path)
-    print(f"    Saved {output_path}")
-    plt.close()
-
-
-def _plot_per_task_accuracy(
-    acc_matrix: np.ndarray,
-    task_names: List[str],
-    output_dir: str,
-):
-    """Line plot of accuracy for each eval task over the training sequence."""
-    fig, ax = plt.subplots(figsize=(14, 6))
-
-    num_eval_tasks, num_train_stages = acc_matrix.shape
-    x = range(num_train_stages)
-
-    # Plot a subset to avoid clutter (first, middle, last trained tasks)
-    indices_to_plot = [0]
-    if num_eval_tasks > 2:
-        indices_to_plot.append(num_eval_tasks // 2)
-    if num_eval_tasks > 1:
-        indices_to_plot.append(num_eval_tasks - 1)
-
-    for i in indices_to_plot:
-        vals = acc_matrix[i]
-        mask = ~np.isnan(vals)
-        if mask.any():
-            ax.plot(np.array(x)[mask], vals[mask], marker='o', label=task_names[i], markersize=4)
-
-    ax.set_title("Task Accuracy Over Training Sequence")
-    ax.set_xlabel("After Training on Task")
-    ax.set_ylabel("Accuracy")
-    ax.set_xticks(list(x))
-    ax.set_xticklabels(task_names, rotation=45, ha='right', fontsize=7)
-    ax.set_ylim(-0.05, 1.05)
-    ax.legend(loc='best', fontsize=8)
-    ax.grid(True, linestyle='--', alpha=0.6)
-
-    plt.tight_layout()
-    output_path = os.path.join(output_dir, "per_task_accuracy.png")
     plt.savefig(output_path)
     print(f"    Saved {output_path}")
     plt.close()

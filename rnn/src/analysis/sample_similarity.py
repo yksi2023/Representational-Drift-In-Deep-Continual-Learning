@@ -1,7 +1,8 @@
-"""Sample-wise similarity matrix module for RNN.
+"""Sample-wise STPV similarity matrix module for RNN.
 
-Computes cosine similarity between all sample pairs within each checkpoint model,
-using pre-saved .npz representations.
+Computes pairwise similarity between all samples' Spatiotemporal Population
+Vectors (STPVs) within each checkpoint model.
+STPV = concatenation of Population Vectors across all time steps.
 """
 import os
 from typing import List
@@ -47,7 +48,7 @@ def plot_sample_similarity_matrix(
     cbar = ax.figure.colorbar(im, ax=ax, shrink=0.8)
     cbar.ax.set_ylabel(metric_label, rotation=-90, va="bottom")
 
-    ax.set_title(f'Sample {metric_label} — Model after Task {task_idx}\nProbe: {probe_task}')
+    ax.set_title(f'Sample STPV {metric_label} — Model after Task {task_idx}\nProbe: {probe_task}')
     ax.set_xlabel('Sample Index')
     ax.set_ylabel('Sample Index')
 
@@ -63,11 +64,11 @@ def run_sample_similarity(
     output_dir: str,
 ) -> None:
     """
-    Analyze sample-wise similarity matrices (cosine + Pearson) for each checkpoint.
+    Analyze sample-wise STPV similarity matrices (cosine + Pearson) for each checkpoint.
 
     Args:
         exp_dir: Experiment directory containing representations/.
-        probe_tasks: Which tasks' representations to analyze.
+        probe_tasks: Which tasks' STPVs to analyze.
         task_names: Ordered list of all task names.
         output_dir: Directory to save results.
     """

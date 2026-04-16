@@ -17,6 +17,7 @@ from .model_similarity import run_model_similarity
 from .sample_similarity import run_sample_similarity
 from .performance import plot_rnn_performance
 from .temporal_similarity import run_temporal_similarity
+from .vector_drift import run_vector_drift
 
 __all__ = [
     "run_baseline_drift",
@@ -24,4 +25,5 @@ __all__ = [
     "run_sample_similarity",
     "plot_rnn_performance",
     "run_temporal_similarity",
+    "run_vector_drift",
 ]

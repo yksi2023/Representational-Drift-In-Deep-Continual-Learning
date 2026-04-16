@@ -1,9 +1,12 @@
-"""Temporal hidden state similarity analysis.
+"""Cross-checkpoint Population Vector (PV) similarity analysis.
 
 For each probe task, builds a full cross-checkpoint similarity matrix where
 axes are (checkpoint_0_t0, ..., checkpoint_0_tN, checkpoint_1_t0, ...).
-The diagonal blocks show within-checkpoint temporal similarity; off-diagonal
-blocks show how hidden dynamics at each timestep change across training.
+Each element is the similarity between two PVs (hidden states at specific
+timesteps from specific checkpoints), averaged over the batch.
+
+The diagonal blocks show within-checkpoint temporal PV similarity; off-diagonal
+blocks show how PVs at each timestep change across training.
 
 Both cosine similarity and Pearson correlation variants are produced.
 """
@@ -85,7 +88,7 @@ def _plot_full_matrix(
     ax.set_yticks(centres)
     ax.set_yticklabels(labels, fontsize=7)
 
-    ax.set_title(f"Cross-Checkpoint Temporal {metric_label}\nprobe: {probe_task}")
+    ax.set_title(f"Cross-Checkpoint PV {metric_label}\nprobe: {probe_task}")
     ax.set_xlabel("Checkpoint / Time step")
     ax.set_ylabel("Checkpoint / Time step")
 

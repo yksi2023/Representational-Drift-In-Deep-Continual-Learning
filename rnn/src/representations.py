@@ -2,9 +2,9 @@ import torch
 
 def extract_rnn_representations(model, trial, device='cpu'):
     """
-    Extracts the hidden state representations from the RNN for all time steps.
-    This concatenates all time steps' hidden states into a single long vector per trial.
-    Used for representation drift analysis to capture the full geometry of dynamics.
+    Extract the Spatiotemporal Population Vector (STPV) from the RNN.
+    The STPV is formed by concatenating Population Vectors (hidden states)
+    across all time steps into a single long vector per trial.
     
     Args:
         model: Trained CognitiveRNN model
@@ -12,7 +12,7 @@ def extract_rnn_representations(model, trial, device='cpu'):
         device: 'cpu' or 'cuda'
         
     Returns:
-        representations: Tensor of shape (Batch, Seq_len * Hidden_size). 
+        stpv: Tensor of shape (Batch, Seq_len * Hidden_size).
     """
     model.eval()
     

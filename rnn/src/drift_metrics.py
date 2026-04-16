@@ -5,11 +5,11 @@ from typing import Dict, List
 
 def compute_metrics(a: torch.Tensor, b: torch.Tensor) -> Dict[str, float]:
     """
-    Compute element-wise metrics between two representations of the same samples.
+    Compute element-wise metrics between two STPVs of the same samples.
 
     Args:
-        a: Tensor of shape [N, D] (Baseline activations)
-        b: Tensor of shape [N, D] (Current activations)
+        a: Tensor of shape [N, D] (Baseline STPV)
+        b: Tensor of shape [N, D] (Current STPV)
 
     Returns:
         Dictionary containing mean and std of cosine similarity, L2 distance,
@@ -47,17 +47,17 @@ def compute_metrics(a: torch.Tensor, b: torch.Tensor) -> Dict[str, float]:
     }
 
 
-def compute_pairwise_similarity_matrix(reps_list: List[torch.Tensor]) -> torch.Tensor:
+def compute_pairwise_similarity_matrix(stpv_list: List[torch.Tensor]) -> torch.Tensor:
     """
-    Compute pairwise cosine similarity matrix between representations from different checkpoints.
+    Compute pairwise cosine similarity matrix between STPVs from different checkpoints.
 
     Args:
-        reps_list: List of T tensors, each of shape [N, D].
+        stpv_list: List of T tensors, each of shape [N, D].
 
     Returns:
         Similarity matrix of shape [T, T].
     """
-    num_tasks = len(reps_list)
+    num_tasks = len(stpv_list)
     sim_matrix = torch.zeros(num_tasks, num_tasks)
 
     for i in range(num_tasks):
@@ -65,25 +65,25 @@ def compute_pairwise_similarity_matrix(reps_list: List[torch.Tensor]) -> torch.T
             if i == j:
                 sim_matrix[i, j] = 1.0
             else:
-                cos_sim = F.cosine_similarity(reps_list[i], reps_list[j], dim=1, eps=1e-8)
+                cos_sim = F.cosine_similarity(stpv_list[i], stpv_list[j], dim=1, eps=1e-8)
                 sim_matrix[i, j] = cos_sim.mean().item()
 
     return sim_matrix
 
 
-def compute_pairwise_pearson_matrix(reps_list: List[torch.Tensor]) -> torch.Tensor:
+def compute_pairwise_pearson_matrix(stpv_list: List[torch.Tensor]) -> torch.Tensor:
     """
-    Compute pairwise Pearson correlation matrix between checkpoint representations.
+    Compute pairwise Pearson correlation matrix between checkpoint STPVs.
 
     Pearson correlation = cosine similarity of mean-centred vectors.
 
     Args:
-        reps_list: List of T tensors, each of shape [N, D].
+        stpv_list: List of T tensors, each of shape [N, D].
 
     Returns:
         Correlation matrix of shape [T, T].
     """
-    num_tasks = len(reps_list)
+    num_tasks = len(stpv_list)
     corr_matrix = torch.zeros(num_tasks, num_tasks)
 
     for i in range(num_tasks):
@@ -91,62 +91,11 @@ def compute_pairwise_pearson_matrix(reps_list: List[torch.Tensor]) -> torch.Tens
             if i == j:
                 corr_matrix[i, j] = 1.0
             else:
-                a = reps_list[i] - reps_list[i].mean(dim=1, keepdim=True)
-                b = reps_list[j] - reps_list[j].mean(dim=1, keepdim=True)
+                a = stpv_list[i] - stpv_list[i].mean(dim=1, keepdim=True)
+                b = stpv_list[j] - stpv_list[j].mean(dim=1, keepdim=True)
                 corr = F.cosine_similarity(a, b, dim=1, eps=1e-8)
                 corr_matrix[i, j] = corr.mean().item()
 
     return corr_matrix
 
 
-def compute_linear_cka(a: torch.Tensor, b: torch.Tensor, eps: float = 1e-12) -> float:
-    """
-    Compute linear CKA between two representation matrices.
-
-    Args:
-        a: Tensor of shape [N, D]
-        b: Tensor of shape [N, D]
-        eps: Numerical stability term
-
-    Returns:
-        Scalar CKA value in [0, 1].
-    """
-    if a.size() != b.size():
-        raise ValueError(f"Shape mismatch: {a.shape} vs {b.shape}")
-
-    if a.numel() == 0 or a.size(0) < 2:
-        return float("nan")
-
-    a_centered = a - a.mean(dim=0, keepdim=True)
-    b_centered = b - b.mean(dim=0, keepdim=True)
-
-    cross = torch.matmul(a_centered, b_centered.t())
-    self_a = torch.matmul(a_centered, a_centered.t())
-    self_b = torch.matmul(b_centered, b_centered.t())
-
-    numerator = (cross ** 2).sum()
-    denominator = torch.sqrt((self_a ** 2).sum() * (self_b ** 2).sum()) + eps
-    return (numerator / denominator).item()
-
-
-def compute_pairwise_cka_matrix(reps_list: List[torch.Tensor]) -> torch.Tensor:
-    """
-    Compute pairwise linear CKA matrix between checkpoint representations.
-
-    Args:
-        reps_list: List of T tensors, each of shape [N, D].
-
-    Returns:
-        CKA matrix of shape [T, T].
-    """
-    num_tasks = len(reps_list)
-    cka_matrix = torch.zeros(num_tasks, num_tasks)
-
-    for i in range(num_tasks):
-        for j in range(num_tasks):
-            if i == j:
-                cka_matrix[i, j] = 1.0
-            else:
-                cka_matrix[i, j] = compute_linear_cka(reps_list[i], reps_list[j])
-
-    return cka_matrix
