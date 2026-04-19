@@ -24,89 +24,127 @@ from typing import Dict, List, Tuple
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
-from sklearn.decomposition import PCA
 
 
 # ---------------------------------------------------------------------------
 # Core computation
 # ---------------------------------------------------------------------------
 
-def _determine_k(evr: np.ndarray, threshold: float) -> int:
-    cumvar = np.cumsum(evr)
-    k = int(np.searchsorted(cumvar, threshold) + 1)
-    return min(k, len(evr))
+def _get_svd_device() -> torch.device:
+    return torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+
+def _torch_pca(
+    X: torch.Tensor,
+    device: torch.device,
+) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """Exact PCA via ``torch.linalg.svd`` (GPU when available).
+
+    Centers X then runs a thin SVD. For [N, D] with D >> N (typical for conv
+    features), thin SVD complexity is O(N^2 D) which is drastically faster
+    than sklearn's default full SVD, and runs on GPU.
+
+    Returns:
+        evr: (k,) explained variance ratio (descending), on CPU float32.
+        eigvals: (k,) variance (= S^2 / (N-1)), on CPU float32.
+        components: (k, D) principal directions, on CPU float32.
+        where k = min(N, D).
+    """
+    X = X.to(device=device, dtype=torch.float32)
+    X = X - X.mean(dim=0, keepdim=True)
+    # full_matrices=False => thin SVD: U (N, k), S (k,), Vh (k, D), k=min(N,D)
+    _, S, Vh = torch.linalg.svd(X, full_matrices=False)
+    n = X.shape[0]
+    eigvals = (S * S) / max(n - 1, 1)
+    total = eigvals.sum().clamp_min(1e-12)
+    evr = eigvals / total
+    return evr.cpu(), eigvals.cpu(), Vh.cpu()
+
+
+def _determine_k(evr: torch.Tensor, threshold: float) -> int:
+    cumvar = torch.cumsum(evr, dim=0)
+    # searchsorted-style: first index where cumvar >= threshold.
+    hits = (cumvar >= threshold).nonzero(as_tuple=False)
+    if len(hits) == 0:
+        return int(evr.numel())
+    return int(hits[0].item()) + 1
+
+
+def _compute_all_pca(
+    reps_by_task: Dict[int, torch.Tensor],
+    sorted_indices: List[int],
+    threshold: float,
+    device: torch.device,
+) -> Tuple[
+    Dict[int, torch.Tensor],  # evr per ckpt
+    Dict[int, torch.Tensor],  # eigvals per ckpt
+    Dict[int, torch.Tensor],  # components per ckpt
+    List[int],                # k per ckpt
+    List[float],              # participation ratio per ckpt
+]:
+    """Single pass: PCA every checkpoint once. Feeds both the drift
+    decomposition (baseline components) and the per-ckpt dimensionality plots,
+    avoiding the previous two-loops-both-doing-SVD duplication.
+    """
+    evr_by: Dict[int, torch.Tensor] = {}
+    eig_by: Dict[int, torch.Tensor] = {}
+    comp_by: Dict[int, torch.Tensor] = {}
+    ks: List[int] = []
+    prs: List[float] = []
+    for idx in sorted_indices:
+        evr, eigvals, components = _torch_pca(reps_by_task[idx], device)
+        evr_by[idx] = evr
+        eig_by[idx] = eigvals
+        comp_by[idx] = components
+        ks.append(_determine_k(evr, threshold))
+        lam = eigvals
+        pr = float((lam.sum() ** 2) / (lam.pow(2).sum() + 1e-12))
+        prs.append(pr)
+    return evr_by, eig_by, comp_by, ks, prs
 
 
 def _compute_subspace_drift(
     reps_by_task: Dict[int, torch.Tensor],
     sorted_indices: List[int],
-    threshold: float,
-) -> Tuple[np.ndarray, np.ndarray, np.ndarray, int, np.ndarray]:
-    """Decompose drift into coding and null subspace components.
+    baseline_components: torch.Tensor,
+    k: int,
+    device: torch.device,
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Project drift onto baseline coding / null subspaces. GPU-accelerated.
 
     Returns:
-        coding_fractions: (T,) fraction of drift variance in coding subspace
-            (NaN for the baseline index).
+        coding_fractions: (T,) mean per-sample coding-variance fraction (NaN at baseline).
         coding_norms: (T,) mean L2 norm of coding drift component.
         null_norms: (T,) mean L2 norm of null drift component.
-        k: coding subspace dimensionality.
-        evr: baseline PCA explained variance ratio (full).
     """
     baseline_idx = sorted_indices[0]
-    baseline_np = reps_by_task[baseline_idx].cpu().numpy().astype(np.float32)
-
-    pca = PCA()
-    pca.fit(baseline_np)
-    evr = pca.explained_variance_ratio_
-    k = _determine_k(evr, threshold)
-    components_k = pca.components_[:k]  # (k, D)
+    baseline_t = reps_by_task[baseline_idx].to(device=device, dtype=torch.float32)
+    U_k = baseline_components[:k].to(device=device, dtype=torch.float32)  # (k, D)
 
     n = len(sorted_indices)
     coding_fractions = np.full(n, np.nan)
     coding_norms = np.zeros(n)
     null_norms = np.zeros(n)
 
-    baseline_t = reps_by_task[baseline_idx].float()
-    U_k = torch.from_numpy(components_k).float()  # (k, D)
-
     for ci, idx in enumerate(sorted_indices):
         if idx == baseline_idx:
             continue
-        current = reps_by_task[idx].float()
-        delta = current - baseline_t  # (N, D)
-        delta_coding = delta @ U_k.T @ U_k  # (N, D)
+        current = reps_by_task[idx].to(device=device, dtype=torch.float32)
+        delta = current - baseline_t                         # (N, D)
+        coeffs = delta @ U_k.T                               # (N, k)
+        delta_coding = coeffs @ U_k                          # (N, D)
         delta_null = delta - delta_coding
 
-        cn = torch.norm(delta_coding, dim=1)
-        nn = torch.norm(delta_null, dim=1)
-        total_sq = cn ** 2 + nn ** 2
-        frac = (cn ** 2 / (total_sq + 1e-12)).mean().item()
+        cn = torch.linalg.vector_norm(delta_coding, dim=1)
+        nn = torch.linalg.vector_norm(delta_null, dim=1)
+        total_sq = cn * cn + nn * nn
+        frac = ((cn * cn) / (total_sq + 1e-12)).mean().item()
 
         coding_fractions[ci] = frac
         coding_norms[ci] = cn.mean().item()
         null_norms[ci] = nn.mean().item()
 
-    return coding_fractions, coding_norms, null_norms, k, evr
-
-
-def _compute_per_checkpoint_dimensionality(
-    reps_by_task: Dict[int, torch.Tensor],
-    sorted_indices: List[int],
-    threshold: float,
-) -> Tuple[List[int], List[float]]:
-    """PCA on each checkpoint; return k (variance-threshold) and participation ratio."""
-    ks: List[int] = []
-    prs: List[float] = []
-    for idx in sorted_indices:
-        x = reps_by_task[idx].cpu().numpy().astype(np.float32)
-        pca = PCA()
-        pca.fit(x)
-        evr = pca.explained_variance_ratio_
-        ks.append(_determine_k(evr, threshold))
-        lam = pca.explained_variance_
-        pr = (lam.sum() ** 2) / (np.sum(lam ** 2) + 1e-12)
-        prs.append(float(pr))
-    return ks, prs
+    return coding_fractions, coding_norms, null_norms
 
 
 # ---------------------------------------------------------------------------
@@ -235,14 +273,26 @@ def run_subspace_drift(
         return
 
     summary: Dict[str, Dict] = {}
+    device = _get_svd_device()
+    baseline_idx = sorted_indices[0]
 
     for layer in layer_names:
         print(f"  Subspace drift for layer: {layer}")
         reps_by_task = {t: reps_cache[t][layer] for t in sorted_indices}
         safe = layer.replace(".", "_").replace("/", "_")
 
-        coding_fracs, coding_norms, null_norms, k, evr = _compute_subspace_drift(
-            reps_by_task, sorted_indices, threshold=threshold,
+        # Single PCA pass per checkpoint (GPU SVD) -> feeds both the drift
+        # decomposition (baseline components) and the per-ckpt dimensionality
+        # plots. Used to be two independent CPU full-SVD loops.
+        evr_by, _eig_by, comp_by, ks, prs = _compute_all_pca(
+            reps_by_task, sorted_indices, threshold=threshold, device=device,
+        )
+        evr = evr_by[baseline_idx].numpy()
+        k = ks[sorted_indices.index(baseline_idx)]
+        baseline_components = comp_by[baseline_idx]
+
+        coding_fracs, coding_norms, null_norms = _compute_subspace_drift(
+            reps_by_task, sorted_indices, baseline_components, k, device=device,
         )
         valid = coding_fracs[~np.isnan(coding_fracs)]
         mean_coding = float(valid.mean()) if len(valid) > 0 else float("nan")
@@ -260,10 +310,6 @@ def run_subspace_drift(
         _plot_variance_explained(
             evr, k, layer,
             os.path.join(out_subdir, f"variance_explained_{safe}.png"),
-        )
-
-        ks, prs = _compute_per_checkpoint_dimensionality(
-            reps_by_task, sorted_indices, threshold=threshold,
         )
         _plot_dimensionality(
             ks, prs, sorted_indices, layer, threshold,

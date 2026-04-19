@@ -23,7 +23,11 @@ def register_activation_hooks(
             def _hook(_module, _inp, out):
                 if isinstance(out, tuple):
                     out = out[0]
-                activations[key] = out.detach().flatten(1).cpu()
+                # Keep on device + contiguous; DO NOT .cpu() here.
+                # Inline CPU transfers force a full GPU sync inside the
+                # forward pass, preventing overlap with compute. The
+                # consumer moves tensors to CPU once per batch instead.
+                activations[key] = out.detach().flatten(1)
             return _hook
 
         handle = name_to_module[name].register_forward_hook(_make_hook(name))
@@ -61,7 +65,9 @@ def extract_representations(
                 _ = model(inputs)
             for ln in layer_names:
                 if ln in activations:
-                    collected[ln].append(activations[ln])
+                    # Move to CPU per-batch so only one sync per batch
+                    # (instead of one per hooked layer inside forward).
+                    collected[ln].append(activations[ln].to("cpu", non_blocking=True).float())
             if max_batches is not None and (batch_idx + 1) >= max_batches:
                 break
     finally:

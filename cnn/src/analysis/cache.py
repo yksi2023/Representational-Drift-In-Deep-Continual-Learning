@@ -89,7 +89,10 @@ def build_reps_cache(
                     _ = model(inputs)
 
                 for ln in layer_names:
-                    collected[ln].append(activations[ln].float())
+                    # Hook leaves the activation on device; transfer once per
+                    # batch here so forward passes can overlap compute with
+                    # the previous batch's copy.
+                    collected[ln].append(activations[ln].to("cpu", non_blocking=True).float())
 
                 if max_batches is not None and (batch_idx + 1) >= max_batches:
                     break
