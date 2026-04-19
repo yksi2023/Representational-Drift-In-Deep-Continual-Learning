@@ -12,23 +12,24 @@ plt.rcParams.update({
     'lines.markersize': 8,
 })
 
+from .cache import build_reps_cache
 from .baseline_drift import run_baseline_drift
-from .model_similarity import run_model_similarity, run_model_cka_similarity
+from .model_similarity import run_model_similarity
 from .sample_similarity import run_sample_similarity
+from .subspace_drift import run_subspace_drift
+from .gap_drift import run_gap_drift
 from .drift_metrics import (
     compute_metrics,
     compute_pairwise_similarity_matrix,
-    compute_linear_cka,
-    compute_pairwise_cka_matrix,
 )
 
 __all__ = [
+    "build_reps_cache",
     "run_baseline_drift",
-    "run_model_similarity", 
-    "run_model_cka_similarity",
+    "run_model_similarity",
     "run_sample_similarity",
+    "run_subspace_drift",
+    "run_gap_drift",
     "compute_metrics",
     "compute_pairwise_similarity_matrix",
-    "compute_linear_cka",
-    "compute_pairwise_cka_matrix",
 ]

@@ -118,7 +118,7 @@ class IncrementalTinyImageNet:
         imagenet_std = [0.229, 0.224, 0.225]
 
         self.train_set = datasets.ImageFolder(
-                                                root="../data/tiny-imagenet-200-processed/train",
+                                                root="data/tiny-imagenet-200-processed/train",
                                                 transform=transforms.Compose([
                                                                                 transforms.RandomResizedCrop((resize,resize), scale=(0.8, 1.0)),
                                                                                 transforms.RandomHorizontalFlip(),
@@ -128,7 +128,7 @@ class IncrementalTinyImageNet:
                                             )
 
         self.val_set = datasets.ImageFolder(
-                                                root="../data/tiny-imagenet-200-processed/val",
+                                                root="data/tiny-imagenet-200-processed/val",
                                                 transform=transforms.Compose([
                                                                                 transforms.Resize((resize,resize)),
                                                                                 transforms.ToTensor(),
@@ -137,7 +137,7 @@ class IncrementalTinyImageNet:
                                             )
 
         self.test_set = datasets.ImageFolder(
-                                                root="../data/tiny-imagenet-200-processed/test",
+                                                root="data/tiny-imagenet-200-processed/test",
                                                 transform=transforms.Compose([
                                                                                 transforms.Resize((resize,resize)),
                                                                                 transforms.ToTensor(),

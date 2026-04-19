@@ -1,0 +1,642 @@
+%----------------------------------------------------------------------------------------
+%    PACKAGES AND THEMES
+%----------------------------------------------------------------------------------------
+
+\documentclass[aspectratio=169,xcolor=dvipsnames]{beamer}
+\usetheme{SimplePlus}
+
+\usepackage{hyperref}
+\usepackage{graphicx} % Allows including images
+\usepackage{booktabs} % Allows the use of \toprule, \midrule and \bottomrule in tables
+\usepackage[T1]{fontenc}
+\usepackage{tipa}
+\usepackage{subcaption}
+\usepackage{multicol}
+\usepackage[backend=biber,style=ieee,sorting=none,maxbibnames=3,giveninits=true,doi=false,url=false,isbn=false,date=year]{biblatex}
+\addbibresource{reference.bib}
+\setbeamertemplate{bibliography item}[text]
+\setlength{\bibitemsep}{0.35\baselineskip}
+\DeclareFieldFormat{journaltitle}{#1}
+\DeclareFieldFormat{pages}{#1}
+\DeclareFieldFormat{eprint:arxiv}{arXiv\addcolon\space#1}
+\renewbibmacro{in:}{}
+
+%----------------------------------------------------------------------------------------
+%    TITLE PAGE
+%----------------------------------------------------------------------------------------
+
+\title{Representational Drift of Artificial Neural Networks under Continual Learning}
+
+\author{Yikai Si}
+
+\date{\today} % Date, can be changed to a custom date
+
+%----------------------------------------------------------------------------------------
+%    PRESENTATION SLIDES
+%----------------------------------------------------------------------------------------
+
+\begin{document}
+	
+	\begin{frame}
+		% Print the title page as the first slide
+		\titlepage
+	\end{frame}
+	
+	\begin{frame}{Overview}
+		\tableofcontents
+	\end{frame}
+	
+	%------------------------------------------------
+	\section{Introduction}
+	\subsection{Background}
+	
+	\begin{frame}{Background}
+		\begin{columns}
+			\column{0.35\textwidth}
+			\begin{figure}
+				\centering
+				\begin{subfigure}{\textwidth}
+					\centering
+					\includegraphics[width=0.8\textwidth]{images/11.png}
+				\end{subfigure}
+				
+				\begin{subfigure}{\textwidth}
+					\centering
+					\includegraphics[width=0.8\textwidth]{images/12.png}
+				\end{subfigure}
+			\end{figure}
+			
+			\column{0.6\textwidth}
+			\begin{itemize}
+				\item \textbf{Neuroscience:} Neural codes change despite stable behavior (\textbf{representational drift}).
+				\item \textbf{Advantage:} ANNs offer a fully controllable testbed for these complex dynamics.
+			\end{itemize}
+			\begin{block}{Research Question}
+				Do ANNs exhibit representational drift under stable performance? If so, can its structure help us understand biological networks?
+			\end{block}
+		\end{columns}
+	\end{frame}
+	
+	%------------------------------------------------
+	% Slide 1: Concept and Technical Definition
+	%------------------------------------------------
+	\subsection{Representational Drift in the Mouse Visual Cortex}
+	\begin{frame}{Representational Drift in the Mouse Visual Cortex I}
+		\small
+		\textbf{1. Experimental Paradigm}
+		\begin{itemize}
+			\item \textbf{Stimulus:} Repeated presentation of 30s or 120s natural movies to head-fixed, awake mice.
+			\item \textbf{Recording:} Large-scale $Ca^{2+}$ imaging and Neuropixels probes across six visual areas.
+			\item \textbf{Timescales:} Observation of neural activity changes from minutes to weeks.
+		\end{itemize}
+
+		\textbf{2. Technical Definitions of Representations} \\
+		The recorded data forms a 3D tensor $\mathcal{X} \in \mathbb{R}^{R \times T \times N}$, indexed by movie repeat $r$, time bin $t$, and neuron $n$. Three natural slices define the key representations:
+		\begin{itemize}
+			\item \textbf{Population Vector (PV):} Fix $(r,\,t)$ $\Rightarrow$ $\mathbf{v}_{r,t} \in \mathbb{R}^{N}$ — snapshot of all neurons at one moment.
+			\item \textbf{Ensemble Rate Vector (ERV):} Fix $r$, average over $T$ $\Rightarrow$ $\mathbf{e}_{r} = \frac{1}{T}\sum_{t} \mathbf{v}_{r,t} \in \mathbb{R}^{N}$ — mean firing profile per repeat.
+			\item \textbf{Tuning Curve Vector (TCV):} Fix $(r,\,n)$ $\Rightarrow$ $\boldsymbol{\tau}_{r,n} \in \mathbb{R}^{T}$ — one neuron's temporal response.
+		\end{itemize}
+
+		\textbf{3. The Phenomenon (Drift)}
+		\begin{itemize}
+			\item \textbf{Observation:} A continuous, gradual decline in the correlation of PV, ERV, and TCV as the time interval between observations increases, despite identical stimuli and behavioral states.
+		\end{itemize}
+	\end{frame}
+	
+	%------------------------------------------------
+	% Slide 2: Visualizing the Drift
+	%------------------------------------------------
+	\begin{frame}{Representational Drift in the Mouse Visual Cortex II}
+		\begin{figure}
+			\centering
+			\includegraphics[width=0.75\textwidth]{images/mouse1.png}
+		\end{figure}
+		
+		\vspace{-0.8em}
+		\begin{figure}
+			\centering
+			\includegraphics[width=0.75\textwidth]{images/mouse5.png}
+		\end{figure}
+		
+		\vspace{-0.5em}
+		{\tiny (A) PV correlation matrices across movie repeats for a single animal. (B) Expanded view over 30 repeats. (C) PV correlation decay over elapsed time. (E) PV correlation decay averaged across all animals for six visual areas. (H) Ensemble rate correlation decay. (I) Tuning curve correlation decay.}
+	\end{frame}
+	%------------------------------------------------
+	\subsection{Problem Statement}
+	
+	\begin{frame}{Problem Statement}
+		\begin{columns}[T]
+			\column{0.48\textwidth}
+			\begin{block}{Definition}
+				\textbf{Representational drift} is defined as non-trivial changes in representations without changes in task performance.
+			\end{block}
+			
+			\column{0.48\textwidth}
+			\begin{block}{Our Focus}
+				With stable performance, we investigate:
+				1. The existence and structural patterns of drift.
+				2. How Continual Learning (CL) strategies shape these dynamics.
+			\end{block}
+		\end{columns}
+		
+		\begin{figure}[h]
+			\centering
+			\includegraphics[width=0.65\textwidth]{images/2.png}
+		\end{figure}
+	\end{frame}
+	
+	%------------------------------------------------
+	\section{Methods}
+	\subsection{Experimental Setup}
+	\begin{frame}{Methods/Experimental Setup}
+		\label{methods}
+		\vspace{-1em}
+		\begin{figure}[h]
+			\centering
+			\includegraphics[width=0.65\textwidth]{images/3.png}
+		\end{figure}
+		
+		\vspace{-0.5em}
+		\small
+		\begin{columns}[T]
+			\column{0.48\textwidth}
+			\textbf{Vision Stream (CNN)}
+			\begin{itemize}
+				\item \textbf{Tasks:} 20 sequential image classification tasks (Split TinyImageNet).
+				\item \textbf{Model:} Pretrained ResNet-18 (frozen up to \texttt{layer3}).
+				\item \textbf{Representation:} Layer activation vector.
+				\item \textbf{CL Methods:} LwF, Replay, EWC.
+			\end{itemize}
+			
+			\column{0.48\textwidth}
+			\textbf{Cognitive Stream (RNN)}
+			\begin{itemize}
+				\item \textbf{Tasks:} 18 cognitive tasks (Yang et al., \textit{Nat. Neurosci.} 2019).
+				\item \textbf{Model:} Continuous-time RNN.
+				\item \textbf{Representation:} Concatenated hidden states over time.
+				\item \textbf{CL Methods:} Replay, Hypernetworks.
+			\end{itemize}
+		\end{columns}
+	\end{frame}
+	
+	%------------------------------------------------
+	\subsection{Network Architectures}
+	
+	\begin{frame}{Convolutional Neural Networks (CNNs)}
+		\small
+		\begin{itemize}
+			\item \textbf{Convolution:} Slide a small filter $\mathbf{K}$ across the input; at each position compute a weighted sum to get one entry of the feature map.
+			\item \textbf{Pooling:} Reduce spatial size (e.g.\ $2{\times}2$ max-pooling), making the representation more compact and shift-tolerant.
+			\item \textbf{Stacking:} Alternate conv and pooling layers so that early layers capture edges/textures while deeper layers capture higher-level patterns.
+		\end{itemize}
+		\begin{figure}
+			\centering
+			\includegraphics[width=0.65\textwidth]{images/cnn.png}
+		\end{figure}
+	\end{frame}
+	
+	%------------------------------------------------
+	
+	\begin{frame}{ResNet-18 \& Pretraining}
+		\small
+		\begin{itemize}
+			\item \textbf{Problem:} Very deep networks are hard to train (vanishing gradients). \textbf{Solution:} Add skip connections so each block only needs to learn a residual $F(\mathbf{x})$; the output is $F(\mathbf{x}) + \mathbf{x}$.
+			\item \textbf{ResNet-18:} 4 groups of residual blocks (2 blocks each, two $3{\times}3$ conv per block), totaling 18 weight layers.
+			\item \textbf{Pretraining:} We start from weights trained on ImageNet (1000-class classification), which already encode general visual features.
+			\item \textbf{Our setup:} Freeze \texttt{layer1}--\texttt{layer3}; only \texttt{layer4} and the classifier head are updated during continual learning.
+		\end{itemize}
+		\begin{figure}
+			\centering
+			\begin{subfigure}{0.3\textwidth}
+				\centering
+				\includegraphics[width=\linewidth]{images/residualblock.png}
+				\caption{Residual Block}
+			\end{subfigure}
+			\hfill
+			\begin{subfigure}{0.65\textwidth}
+				\centering
+				\includegraphics[width=0.8\linewidth]{images/resnet18.jpg}
+				\caption{ResNet-18 Architecture}
+			\end{subfigure}
+		\end{figure}
+	\end{frame}
+	
+	%------------------------------------------------
+	
+	\begin{frame}{Vanilla Recurrent Neural Networks (RNNs)}
+		\small
+		\begin{itemize}
+			\item Process \textbf{sequential data} by maintaining a hidden state that evolves over time.
+			\item \textbf{Update rule:}
+			$\mathbf{h}_t = f\bigl(W^{\text{rec}}\, \mathbf{h}_{t-1} + W^{\text{in}}\, \mathbf{x}_t + \mathbf{b}\bigr)$,
+			\quad \textbf{Output:} $\mathbf{y}_t = g(W^{\text{out}}\, \mathbf{h}_t)$.
+			\item The \textbf{same weights} are reused at every time step $\Rightarrow$ parameter sharing across time.
+			
+		\end{itemize}
+		\begin{figure}
+			\centering
+			\includegraphics[width=0.8\textwidth]{images/rnn.png}
+			\caption{An RNN with a hidden state}
+		\end{figure}
+	\end{frame}
+	
+	%------------------------------------------------
+	
+\begin{frame}{From Vanilla to Continuous-Time RNN (CTRNN)}
+	\footnotesize
+	To accurately model cognitive dynamics and biological timescales (Yang et al., 2019), we adapt the vanilla RNN into a continuous-time model for $N_{rec}=256$ units.
+	
+	\begin{itemize}
+		\item \textbf{Continuous-Time Dynamics:}
+		$$\tau \frac{d \mathbf{h}}{dt} = -\mathbf{h} + f(W^{\text{rec}}\mathbf{h} + W^{\text{in}}\mathbf{x} + \mathbf{b} + \sqrt{2\tau\sigma^2_{\text{rec}}}\boldsymbol{\xi})$$
+		where $\tau=100$ms governs the neural integration time, $f(x) = \log(1+e^x)$ is the Softplus activation, and $\boldsymbol{\xi}$ introduces biological noise.
+		
+		\item \textbf{Euler Discretization for Simulation:}
+		Using step size $\Delta t = 20$ms and decay factor $\alpha = \Delta t/\tau$:
+		$$\mathbf{h}_t = (1-\alpha)\mathbf{h}_{t-1} + \alpha f \left( W^{\text{rec}}\mathbf{h}_{t-1} + W^{\text{in}}\mathbf{x}_t + \mathbf{b} + \sqrt{2\alpha^{-1}\sigma_{\text{rec}}^2} \mathbf{N}(0,1) \right)$$
+	\end{itemize}
+\end{frame}
+
+%------------------------------------------------
+
+\begin{frame}{Network Interface: Stimulus \& Rule Inputs}
+	\footnotesize
+	The input vector $\mathbf{x} = (x_{\text{fix}}, \mathbf{x}_{\text{mod1}}, \mathbf{x}_{\text{mod2}}, \mathbf{x}_{\text{rule}}) + \mathbf{x}_{\text{noise}}$ contains 85 units.
+	
+	\begin{itemize}
+		\item \textbf{1. Fixation Unit ($x_{\text{fix}}$):} 
+		Binary signal ($1=$ fixate, $0=$ respond).
+		
+		\item \textbf{2. Sensory Rings ($\mathbf{x}_{\text{mod1}}, \mathbf{x}_{\text{mod2}}$):} 
+		Two sets of 32 units mapped to a circular variable (e.g., direction). A stimulus at angle $\theta$ with strength $\gamma$ evokes a Gaussian "bump" of activity:
+		$$x_i(\theta) = 0.8 \gamma \exp \left[ -\frac{1}{2} \left( \frac{8|\theta - \theta_i|}{\pi} \right)^2 \right]$$
+		
+		\item \textbf{3. Rule Units ($\mathbf{x}_{\text{rule}}$):} 
+		A one-hot encoded vector representing the current cognitive task protocol.
+	\end{itemize}
+\end{frame}
+
+%------------------------------------------------
+
+\begin{frame}{Network Interface: Motor Readout \& Targets}
+	\footnotesize
+	The network generates outputs via a logistic readout: $\mathbf{y} = g(W^{\text{out}}\mathbf{h})$, mapping to 33 output units.
+	
+	\begin{itemize}
+		\item \textbf{Fixation Target ($\hat{y}_{\text{fix}}$):} 
+		Expected to be $0.85$ during fixation and delay epochs, dropping to $0.05$ during the response window.
+		
+		\item \textbf{Motor Response Ring ($\hat{y}_i$):} 
+		When a response is required at target angle $\psi$, the network must output a localized activity bump:
+		$$\hat{y}_i(\psi) = 0.8 \exp \left[ -\frac{1}{2} \left( \frac{8|\psi - \psi_i|}{\pi} \right)^2 \right] + 0.05$$
+		During non-response epochs, target baseline is $0.05$.
+		
+		\item \textbf{Evaluation:} 
+		A population vector decodes the response ring. The trial is correct if the decoded angle is within $36^\circ$ of $\psi$.
+	\end{itemize}
+\end{frame}
+
+%------------------------------------------------
+
+\begin{frame}{Sequential Training \& Objective Function}
+	\footnotesize
+	\begin{itemize}
+		\item \textbf{Sequential Curriculum:}
+		Tasks are trained sequentially. Parameters optimized for task $t$ risk overwriting representations learned for task $t-1$, necessitating continual learning strategies.
+		
+		\item \textbf{Objective Function:}
+		The network minimizes the Mean Squared Error (MSE) between the readout $\mathbf{y}$ and target $\hat{\mathbf{y}}$, calculated over all output units $i$ and time steps $t$:
+		$$L = \langle m_{i,t}(y_{i,t} - \hat{y}_{i,t})^2 \rangle_{i,t}$$
+		
+		\item \textbf{Temporal Masking ($m_{i,t}$):}
+		To prioritize motor execution, errors are weighted differently across trial epochs:
+		\begin{itemize}
+			\item $m_{i,t} = 1$: Fixation, Stimulus 1, Delay, and Stimulus 2 epochs.
+			\item $m_{i,t} = 0$: First $100$ms of the Go epoch (grace period for motor initiation).
+			\item $m_{i,t} = 5$: The remainder of the Go epoch (heavy penalty for incorrect response).
+			\item $m_{\text{fix},t} = 2 m_{i,t}$: Fixation breaks are penalized twice as heavily as motor directional errors.
+		\end{itemize}
+	\end{itemize}
+\end{frame}
+
+%------------------------------------------------
+
+\begin{frame}{The Cognitive Task Suite (18 Tasks)}
+	\footnotesize
+	The network is evaluated across 18 distinct cognitive processes defined by structural epochs (Fixation $\rightarrow$ Stim 1 $\rightarrow$ Delay $\rightarrow$ Stim 2 $\rightarrow$ Go).
+	
+	\begin{itemize}
+		\item \textbf{Go / Anti-Go Family:} 
+		Respond toward ($\theta$) or away from ($\theta + 180^\circ$) a single stimulus. Tests basic sensorimotor mapping and inhibitory control.
+		\item \textbf{Decision Making (DM) Family:} 
+		Integrate noisy evidence from simultaneous stimuli.
+		\begin{itemize}
+			\item \textit{Ctx DM 1/2}: Context-dependent gating (ignore one modality entirely).
+			\item \textit{MultSen DM}: Cross-modal integration (combine strengths).
+		\end{itemize}
+		\item \textbf{Delay DM Family:} 
+		Similar to DM, but evidence is presented sequentially, requiring parametric working memory.
+		\item \textbf{Matching Family (DMS / DNMS):} 
+		Respond based on sequential equivalence (Match/Non-Match to Sample). 
+	\end{itemize}
+\end{frame}
+	%------------------------------------------------
+	\subsection{Continual Learning Methods}
+	
+	\begin{frame}{Continual Learning Methods: Experience Replay}
+		\begin{itemize}
+			\item \textbf{Mechanism:} Store a subset of data from previous tasks in a memory buffer $\mathcal{M}$. When training on a new task $t$, sample mini-batches from the current task $\mathcal{D}_t$ and interleave them with samples from $\mathcal{M}$.
+			\item \textbf{Loss function:} 
+			$$ L_{\text{total}}(\theta) = L(\theta; \mathcal{D}_t) + \lambda\, L(\theta; \mathcal{M}) $$
+			where $\lambda$ controls the replay strength.
+			\item \textbf{Properties:} A simple and direct way to enforce the model to remember previous decision boundaries. However, performance is bounded by the size of the memory buffer.
+		\end{itemize}
+	\end{frame}
+	
+	%------------------------------------------------
+	
+	\begin{frame}{Continual Learning Methods: Elastic Weight Consolidation (EWC)}
+    \small
+	\begin{itemize}
+		\item \textbf{Mechanism:} Constrain parameters important for previous tasks from changing too much. After training on task $t-1$, compute the Fisher Information Matrix $F^{(t-1)}$ to estimate parameter importance.
+		\item \textbf{Loss function:} Adds a quadratic penalty anchored to the previous parameters $\theta^{(t-1)}$:
+		$ L(\theta) = L_t(\theta) + \frac{\lambda}{2} \sum_i F_{i,i}^{(t-1)} (\theta_i - \theta_i^{(t-1)})^2 $
+		\item \textbf{Properties:} Does not require storing raw data from previous tasks. Approximates the posterior over parameters.
+	\end{itemize}
+    \begin{figure}
+        \centering
+        \includegraphics[width=0.35\textwidth]{images/ewc2.png}
+    \end{figure}
+\end{frame}
+	
+	%------------------------------------------------
+	
+	\begin{frame}{Continual Learning Methods: Learning without Forgetting (LwF)}
+		\begin{itemize}
+			\item \textbf{Mechanism:} Use knowledge distillation to preserve the input-output mapping of previous tasks. Before updating the model on new task data, record the predictions of the old model $f(\theta_{\text{old}})$ on the new data to use as soft targets.
+			\item \textbf{Loss function:} 
+			$$ L_{\text{total}}(\theta_{\text{new}}) = L_{\text{task}}(\theta_{\text{new}}) + \lambda\, L_{\text{distill}}\bigl(f(\mathbf{x}; \theta_{\text{new}}),\, f(\mathbf{x}; \theta_{\text{old}})\bigr) $$
+			where $L_{\text{distill}}$ is typically the Kullback-Leibler (KL) divergence.
+			\item \textbf{Properties:} A data-free approach. Performance depends heavily on the overlap in data distribution between the new and old tasks.
+		\end{itemize}
+	\end{frame}
+	
+	%------------------------------------------------
+	
+	\begin{frame}{Continual Learning Methods: Hypernetworks}
+    \small
+	\begin{itemize}
+		\item \textbf{Mechanism:} A meta-network $h(\cdot; \phi)$ generates main network weights. For task $t$, a learned embedding $e_t$ produces parameters: $\theta_t = h(e_t; \phi)$.
+		\item \textbf{Loss function:} We minimize current task loss while regularizing $\phi$ to preserve weights generated for past tasks $k < t$:
+		$$ L_{\text{total}} = L_{\text{task}}(\theta_t) + \frac{\lambda}{2} \sum_{k=1}^{t-1} \left\lVert h(e_k; \phi) - \theta_k^* \right\rVert^2 $$
+		where $\theta_k^*$ are the frozen optimal weights for task $k$.
+	\end{itemize}
+    	\begin{columns}[t]
+    	\begin{column}{0.48\textwidth}
+    		\centering
+    		\includegraphics[width=\linewidth]{images/hypernetwork.png}
+    	\end{column}
+    	\begin{column}{0.48\textwidth}
+    		\centering
+    		\includegraphics[width=\linewidth]{images/hyper.png}
+    	\end{column}
+    \end{columns}
+\end{frame}
+	
+	%------------------------------------------------
+	\section{Results}
+	\subsection{CNN Results}
+	\begin{frame}{CNN Results: Experience Replay Method}
+		\textbf{Observation:} Replay preserves performance, but similarity matrices reveal significant representational drift.
+		
+		\begin{columns}
+			\column{0.4\textwidth}
+			\begin{figure}
+				\centering
+				\begin{subfigure}{\textwidth}
+					\centering
+					\includegraphics[width=0.65\textwidth]{images/41.png}
+				\end{subfigure}
+				\begin{subfigure}{\textwidth}
+					\centering
+					\includegraphics[width=0.65\textwidth]{images/42.png}
+				\end{subfigure}
+			\end{figure}
+			
+			\column{0.6\textwidth}
+			\begin{figure}
+				\centering
+				\begin{subfigure}{0.8\linewidth}
+					\centering
+					\includegraphics[width=\linewidth]{images/43.png}
+				\end{subfigure}\hfill
+				
+				
+				\begin{subfigure}{0.7\linewidth}
+					\centering
+					\includegraphics[width=\linewidth]{images/44.png}
+				\end{subfigure}\hfill
+				
+			\end{figure}
+			
+		\end{columns}
+	\end{frame}
+	
+	%------------------------------------------------
+	
+	\begin{frame}{CNN Results: Experience Replay Method (RSM)}
+		Representational Matrix
+		$
+		\mathrm{M}_{i,j}^{(l)}
+		= \frac{1}{N}\sum_{x\in\mathcal{P}}
+		\frac{h_i^{(l)}(x)\cdot h_j^{(l)}(x)}
+		{\left\lVert h_i^{(l)}(x)\right\rVert_2\,\left\lVert h_j^{(l)}(x)\right\rVert_2}.
+		$
+		\footnote{\tiny For a given layer $l$ and a probe sample $x$, $h_t^{(l)}(x)$ denote the activation vector of $x$ at layer $l$ under parameters $\theta_t$, where $\theta_t$ is the model checkpoint saved after completing training on tasks $t$. Let $\mathcal{P}$ denote the probe set with $|\mathcal{P}|=N$.}
+		\begin{figure}
+			\centering
+			\begin{subfigure}{0.48\textwidth}
+				\centering
+				\includegraphics[width=0.65\textwidth]{images/51.png}
+			\end{subfigure}
+			\begin{subfigure}{0.48\textwidth}
+				\centering
+				\includegraphics[width=0.65\textwidth]{images/52.png}
+			\end{subfigure}
+			\caption{Representational Similarity Matrix of replay method}
+		\end{figure}
+		
+	\end{frame}
+	
+	
+	\begin{frame}{CNN Results: EWC (Elastic Weight Consolidation) Method}
+		\textbf{Observation:} EWC exhibits similar representational drift patterns.
+		
+		\begin{columns}
+			\column{0.4\textwidth}
+			\begin{figure}
+				\centering
+				\begin{subfigure}{\textwidth}
+					\centering
+					\includegraphics[width=0.65\textwidth]{images/61.png}
+				\end{subfigure}
+				\begin{subfigure}{\textwidth}
+					\centering
+					\includegraphics[width=0.65\textwidth]{images/62.png}
+				\end{subfigure}
+			\end{figure}
+			
+			\column{0.6\textwidth}
+			\begin{figure}
+				\centering
+				\begin{subfigure}{0.8\linewidth}
+					\centering
+					\includegraphics[width=\linewidth]{images/63.png}
+				\end{subfigure}\hfill
+				
+				
+				\begin{subfigure}{0.7\linewidth}
+					\centering
+					\includegraphics[width=\linewidth]{images/64.png}
+				\end{subfigure}\hfill
+				
+			\end{figure}
+			
+		\end{columns}
+	\end{frame}
+	
+	%------------------------------------------------
+	
+	\begin{frame}{CNN Results: EWC Method (RSM)}
+		\begin{figure}
+			\centering
+			\begin{subfigure}{0.48\textwidth}
+				\centering
+				\includegraphics[width=0.95\textwidth]{images/71.png}
+			\end{subfigure}
+			\begin{subfigure}{0.48\textwidth}
+				\centering
+				\includegraphics[width=0.95\textwidth]{images/72.png}
+			\end{subfigure}
+			\caption{Representational Similarity Matrix of EWC method}
+		\end{figure}
+		
+	\end{frame}
+	
+	%------------------------------------------------
+	
+	\begin{frame}{CNN Results: LwF (Learning without Forgetting) Method}
+		\textbf{Observation:} LwF exhibits similar representational drift patterns.
+		
+		\begin{columns}
+			\column{0.4\textwidth}
+			\begin{figure}
+				\centering
+				\begin{subfigure}{\textwidth}
+					\centering
+					\includegraphics[width=0.65\textwidth]{images/81.png} 
+				\end{subfigure}
+				\begin{subfigure}{\textwidth}
+					\centering
+					\includegraphics[width=0.65\textwidth]{images/82.png} 
+				\end{subfigure}
+			\end{figure}
+			
+			\column{0.6\textwidth}
+			\begin{figure}
+				\centering
+				\begin{subfigure}{0.8\linewidth}
+					\centering
+					\includegraphics[width=\linewidth]{images/83.png} 
+				\end{subfigure}\hfill
+				
+				
+				\begin{subfigure}{0.7\linewidth}
+					\centering
+					\includegraphics[width=\linewidth]{images/84.png} 
+				\end{subfigure}\hfill
+				
+			\end{figure}
+			
+		\end{columns}
+	\end{frame}
+	
+	%------------------------------------------------
+	
+	\begin{frame}{CNN Results: LwF Method (RSM)}
+		\begin{figure}
+			\centering
+			\begin{subfigure}{0.48\textwidth}
+				\centering
+				\includegraphics[width=0.95\textwidth]{images/91.png} 
+			\end{subfigure}
+			\begin{subfigure}{0.48\textwidth}
+				\centering
+				\includegraphics[width=0.95\textwidth]{images/92.png} 
+			\end{subfigure}
+			\caption{Representational Similarity Matrix of LwF method}
+		\end{figure}
+		
+	\end{frame}
+	
+	%------------------------------------------------
+	\subsection{RNN Results}
+	
+	\begin{frame}{RNN Results: Replay Method}
+		\textbf{Observation:} Replay in RNNs (trained on 18 temporal cognitive tasks) exhibits representational drift while maintaining task performance.\footnote{\tiny A spatiotemporal population vector(STPV) is a long vector formed by concatenating population vectors from different time points.}
+	
+		\begin{figure}[h]
+			\centering
+			\begin{subfigure}{0.48\textwidth}
+				\centering
+				\includegraphics[width=0.9\linewidth]{images/accuracy_matrix.png}
+				\caption{Task Performance}
+			\end{subfigure}
+			\hfill
+			\begin{subfigure}{0.48\textwidth}
+				\centering
+				\includegraphics[width=0.9\linewidth]{images/cosine_matrix_fdgo.png}
+				\caption{RNN Drift Signature}
+			\end{subfigure}
+		\end{figure}
+	\end{frame}
+	
+	\begin{frame}{RNN Results: Replay Method}
+	\begin{columns}
+		\column{0.48\textwidth}
+		\begin{figure}
+			\centering
+			\includegraphics[width=\linewidth]{images/pearson_matrix_fdgo.png}
+		\end{figure}
+		
+		\column{0.48\textwidth}
+		\begin{figure}
+			\centering
+			\includegraphics[width=\linewidth]{images/vector_drift_fdgo.png}
+		\end{figure}
+	\end{columns}
+\end{frame}
+
+	%------------------------------------------------
+	
+	
+	
+	%------------------------------------------------
+	
+
+	%------------------------------------------------
+	
+	\begin{frame}[allowframebreaks]{References}
+		\tiny
+		\nocite{*}
+		\printbibliography[heading=none]
+	\end{frame}
+	
+	%------------------------------------------------
+	
+	\begin{frame}
+		\Huge{\centerline{\textbf{Thank You}}}
+	\end{frame}
+	
+\end{document}

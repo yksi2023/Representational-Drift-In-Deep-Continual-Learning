@@ -5,8 +5,9 @@ This script provides comprehensive drift analysis including:
 2. Model pairwise STPV similarity matrices
 3. Sample-wise STPV similarity matrices
 4. Cross-checkpoint PV similarity matrices
-5. Vector drift (PV / ERV / TCV Pearson correlation vs task gap)
-6. Performance plots (from saved performance_history.json)
+5. Vector drift (STPV / PV / ERV / TCV Pearson correlation vs task gap)
+6. Coding / null subspace drift decomposition
+7. Performance plots (from saved performance_history.json)
 
 Representations are loaded from pre-saved .npz files (generated during training),
 so no GPU re-extraction is needed.
@@ -26,6 +27,7 @@ from src.analysis import (
     run_sample_similarity,
     run_temporal_similarity,
     run_vector_drift,
+    run_subspace_drift,
     plot_rnn_performance,
 )
 
@@ -117,7 +119,7 @@ def main():
     print("=" * 60)
 
     # 1. Baseline drift analysis
-    print("\n[1/6] Running baseline STPV drift analysis...")
+    print("\n[1/7] Running baseline STPV drift analysis...")
     run_baseline_drift(
         exp_dir=args.exp_dir,
         probe_tasks=args.probe_tasks,
@@ -128,7 +130,7 @@ def main():
     )
 
     # 2. Model pairwise cosine similarity matrices
-    print("\n[2/6] Running model STPV similarity analysis...")
+    print("\n[2/7] Running model STPV similarity analysis...")
     run_model_similarity(
         exp_dir=args.exp_dir,
         probe_tasks=args.probe_tasks,
@@ -138,7 +140,7 @@ def main():
 
     # 3. Sample-wise similarity matrices
     if not args.skip_sample_sim:
-        print("\n[3/6] Running sample similarity analysis...")
+        print("\n[3/7] Running sample similarity analysis...")
         run_sample_similarity(
             exp_dir=args.exp_dir,
             probe_tasks=args.probe_tasks,
@@ -146,10 +148,10 @@ def main():
             output_dir=args.output_dir,
         )
     else:
-        print("\n[3/6] Skipping sample similarity (--skip_sample_sim).")
+        print("\n[3/7] Skipping sample similarity (--skip_sample_sim).")
 
     # 4. Temporal hidden state similarity
-    print("\n[4/6] Running cross-checkpoint PV similarity...")
+    print("\n[4/7] Running cross-checkpoint PV similarity...")
     run_temporal_similarity(
         exp_dir=args.exp_dir,
         probe_tasks=args.probe_tasks,
@@ -159,7 +161,7 @@ def main():
     )
 
     # 5. Vector drift (PV / ERV / TCV)
-    print("\n[5/6] Running vector drift analysis (PV / ERV / TCV)...")
+    print("\n[5/7] Running vector drift analysis (STPV / PV / ERV / TCV)...")
     run_vector_drift(
         exp_dir=args.exp_dir,
         probe_tasks=args.probe_tasks,
@@ -168,8 +170,17 @@ def main():
         hidden_size=args.hidden_size,
     )
 
-    # 6. Performance plots
-    print("\n[6/6] Generating performance plots...")
+    # 6. Coding / null subspace drift decomposition
+    print("\n[6/7] Running coding/null subspace drift decomposition...")
+    run_subspace_drift(
+        exp_dir=args.exp_dir,
+        probe_tasks=args.probe_tasks,
+        task_names=task_names,
+        output_dir=args.output_dir,
+    )
+
+    # 7. Performance plots
+    print("\n[7/7] Generating performance plots...")
     try:
         plot_rnn_performance(args.exp_dir, args.output_dir)
     except FileNotFoundError as e:

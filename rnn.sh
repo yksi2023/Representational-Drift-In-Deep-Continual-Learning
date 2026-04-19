@@ -1,23 +1,18 @@
 #!/usr/bin/env bash
-# ==============================================================================
-# Run all RNN sequential learning experiments (one per CL method).
-# Results are saved under rnn/experiments/<method_name>/.
-# A timing summary is printed at the end and saved to rnn/experiments/timing.txt.
-#
-# Usage:  bash run_rnn_experiments.sh
-# ==============================================================================
+# Train all CL methods for RNN (Yang et al. sequential learning tasks).
+# Results: rnn/experiments/exp2_rnn_<method>/
+# Timing:  rnn/experiments/exp2_rnn_timing.txt
+# Usage:   bash rnn.sh
 set -euo pipefail
 source activate drift
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-RNN_DIR="${SCRIPT_DIR}/rnn"
-EXP_ROOT="${RNN_DIR}/experiments"
-TIMING_FILE="${EXP_ROOT}/exp2_rnn_timing.txt"
+WORK_DIR="${SCRIPT_DIR}/rnn"
+EXP_ROOT="${WORK_DIR}/experiments"
+TIMING="${EXP_ROOT}/exp2_rnn_timing.txt"
+mkdir -p "${EXP_ROOT}"; : > "${TIMING}"
 
-mkdir -p "${EXP_ROOT}"
-> "${TIMING_FILE}"   # clear previous timing
-
-# ── Shared hyper-parameters ──────────────────────────────────────────────────
-COMMON_ARGS=(
+COMMON=(
     --hidden_size 256
     --sigma_rec 0.05
     --activation softplus
@@ -29,78 +24,25 @@ COMMON_ARGS=(
     --seed 0
 )
 
-# ── Helper: run one experiment and record wall time ──────────────────────────
+cd "${WORK_DIR}"
+
 run_one() {
     local name="$1"; shift
     local save_dir="${EXP_ROOT}/exp2_rnn_${name}"
     echo ""
-    echo "================================================================"
-    echo "  Starting: ${name}"
-    echo "  Save dir: ${save_dir}"
-    echo "================================================================"
-
-    local start end elapsed
-    start=$(date +%s)
-
-    python run_experiment.py "${COMMON_ARGS[@]}" --save_dir "${save_dir}" "$@"
-
-    end=$(date +%s)
-    elapsed=$(( end - start ))
-    local mins=$(( elapsed / 60 ))
-    local secs=$(( elapsed % 60 ))
-    local msg="${name}: ${mins}m ${secs}s (${elapsed}s total)"
-    echo "${msg}"
-    echo "${msg}" >> "${TIMING_FILE}"
+    echo "==> Training: ${name} -> ${save_dir}"
+    local t0; t0=$(date +%s)
+    python run_experiment.py "${COMMON[@]}" --save_dir "${save_dir}" "$@"
+    printf '%s: %ds\n' "${name}" $(( $(date +%s) - t0 )) | tee -a "${TIMING}"
 }
 
-# ── Switch to rnn/ so relative imports work ──────────────────────────────────
-cd "${RNN_DIR}"
+T0=$(date +%s)
 
-TOTAL_START=$(date +%s)
+run_one normal   --method normal
+run_one replay   --method replay --memory_per_task 50 --replay_num_tasks 1
+run_one ewc      --method ewc --ewc_lambda 100.0 --fisher_samples 200
+run_one lwf      --method lwf --lwf_lambda 1.0 --lwf_temperature 2.0
+run_one hypernet --method hypernet --hnet_beta 0.5 --hnet_chunks 10 --hnet_hidden 128
 
-# 1. Replay
-run_one "replay" \
-    --method replay \
-    --memory_per_task 50 \
-    --replay_num_tasks 1
-
-# 2. HyperNet
-run_one "hypernet" \
-    --method hypernet \
-    --hnet_beta 0.5 \
-    --hnet_chunks 10 \
-    --hnet_hidden 128
-
-# 3. EWC
-run_one "ewc" \
-    --method ewc \
-    --ewc_lambda 100.0 \
-    --fisher_samples 200
-
-# 4. Baseline (no CL regularization)
-run_one "normal" \
-    --method normal
-
-# 5. LwF
-run_one "lwf" \
-    --method lwf \
-    --lwf_lambda 1.0 \
-    --lwf_temperature 2.0
-
-TOTAL_END=$(date +%s)
-TOTAL_ELAPSED=$(( TOTAL_END - TOTAL_START ))
-TOTAL_MINS=$(( TOTAL_ELAPSED / 60 ))
-TOTAL_SECS=$(( TOTAL_ELAPSED % 60 ))
-
-echo ""
-echo "================================================================"
-echo "  All experiments finished!"
-echo "  Total wall time: ${TOTAL_MINS}m ${TOTAL_SECS}s"
-echo "================================================================"
-echo ""
-echo "── Timing summary ──"
-cat "${TIMING_FILE}"
-echo "TOTAL: ${TOTAL_MINS}m ${TOTAL_SECS}s" >> "${TIMING_FILE}"
-echo ""
-echo "Results saved under: ${EXP_ROOT}/"
-echo "Timing log: ${TIMING_FILE}"
+printf 'TOTAL: %ds\n' $(( $(date +%s) - T0 )) | tee -a "${TIMING}"
+echo "Done. Run 'bash analysis_rnn.sh' for drift analysis."
