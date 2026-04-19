@@ -1,10 +1,16 @@
 #!/usr/bin/env bash
-# Drift analysis on every rnn/experiments/<prefix>* directory.
-# Usage:  bash analysis_rnn.sh [PREFIX]     # default prefix: exp2_rnn_
+# Drift analysis on every rnn/experiments/exp<i>_rnn_*/ directory.
+# Usage:  bash analysis_rnn.sh <i>
 set -euo pipefail
 source activate drift
 
-PREFIX="${1:-exp2_rnn_}"
+if [ $# -lt 1 ]; then
+    echo "Usage: bash analysis_rnn.sh <i>   # analyzes all exp<i>_rnn_*"
+    exit 1
+fi
+IDX="$1"
+PREFIX="exp${IDX}_rnn_"
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 WORK_DIR="${SCRIPT_DIR}/rnn"
 

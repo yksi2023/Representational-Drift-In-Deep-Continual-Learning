@@ -219,4 +219,157 @@ class IncrementalTinyImageNet:
             })
         loader = torch.utils.data.DataLoader(subset, **loader_kwargs)
         return loader
+
+
+class IncrementalCIFAR100:
+    '''Automatically create data loaders for incremental learning on CIFAR-100.
+
+    Args:
+        num_classes: keep only the first ``num_classes`` of CIFAR-100 (100 = full dataset).
+        resize: image size. CIFAR-100 is 32x32 natively; set larger (e.g. 224) for BiT-style backbones.
+        val_ratio: fraction of training data reserved for validation (per-class stratified).
+        seed: RNG seed for the train/val split.
+    '''
+    def __init__(self, num_classes: int = 100, resize: int = 32,
+                 val_ratio: float = 0.1, seed: int = 42):
+        if not (1 <= num_classes <= 100):
+            raise ValueError(f"num_classes must be in [1, 100], got {num_classes}")
+        self.num_classes = num_classes
+
+        # CIFAR-100 per-channel stats (on full dataset)
+        mean = [0.5071, 0.4866, 0.4409]
+        std = [0.2673, 0.2564, 0.2762]
+
+        if resize == 32:
+            train_tf = transforms.Compose([
+                transforms.RandomCrop(32, padding=4),
+                transforms.RandomHorizontalFlip(),
+                transforms.ToTensor(),
+                transforms.Normalize(mean=mean, std=std),
+            ])
+            eval_tf = transforms.Compose([
+                transforms.ToTensor(),
+                transforms.Normalize(mean=mean, std=std),
+            ])
+        else:
+            train_tf = transforms.Compose([
+                transforms.Resize((resize, resize)),
+                transforms.RandomCrop(resize, padding=resize // 8),
+                transforms.RandomHorizontalFlip(),
+                transforms.ToTensor(),
+                transforms.Normalize(mean=mean, std=std),
+            ])
+            eval_tf = transforms.Compose([
+                transforms.Resize((resize, resize)),
+                transforms.ToTensor(),
+                transforms.Normalize(mean=mean, std=std),
+            ])
+
+        full_train = datasets.CIFAR100(root="data", train=True, download=True, transform=train_tf)
+        full_test = datasets.CIFAR100(root="data", train=False, download=True, transform=eval_tf)
+
+        # Optional: subset to first ``num_classes`` classes
+        if num_classes < 100:
+            train_keep = [i for i, t in enumerate(full_train.targets) if t < num_classes]
+            test_keep = [i for i, t in enumerate(full_test.targets) if t < num_classes]
+            full_train = torch.utils.data.Subset(full_train, train_keep)
+            self.test_set = torch.utils.data.Subset(full_test, test_keep)
+        else:
+            self.test_set = full_test
+
+        # Train / val split (shuffled, deterministic)
+        n = len(full_train)
+        if val_ratio > 0.0:
+            g = torch.Generator().manual_seed(seed)
+            perm = torch.randperm(n, generator=g).tolist()
+            split = int(val_ratio * n)
+            self.train_set = torch.utils.data.Subset(full_train, perm[split:])
+            self.val_set = torch.utils.data.Subset(full_train, perm[:split])
+        else:
+            self.train_set = full_train
+            self.val_set = torch.utils.data.Subset(full_train, [])
+
+        self._class_indices = {"train": {}, "test": {}, "val": {}}
+        self._precompute_class_indices()
+        self._cache_indices = {"train": {}, "test": {}, "val": {}}
+
+    def _precompute_class_indices(self):
+        """Precompute class -> indices dict by iterating labels once."""
+        for mode, dataset in [("train", self.train_set), ("test", self.test_set), ("val", self.val_set)]:
+            class_to_indices = {}
+            for i, (_, lbl) in enumerate(dataset):
+                lbl = int(lbl)
+                class_to_indices.setdefault(lbl, []).append(i)
+            for lbl in class_to_indices:
+                class_to_indices[lbl] = torch.tensor(class_to_indices[lbl], dtype=torch.long)
+            self._class_indices[mode] = class_to_indices
+
+    def get_set(self, mode, label):
+        if mode == 'train':
+            data = self.train_set
+        elif mode == 'test':
+            data = self.test_set
+        elif mode == 'val':
+            data = self.val_set
+        else:
+            raise ValueError("Mode should be 'train', 'test', or 'val'")
+
+        try:
+            label_key = tuple(sorted(int(x) for x in label))
+        except TypeError:
+            label_key = (int(label),)
+
+        cache = self._cache_indices[mode]
+        if label_key in cache:
+            return cache[label_key]
+
+        class_indices = self._class_indices[mode]
+        indices_list = [class_indices[lbl] for lbl in label_key if lbl in class_indices]
+        if indices_list:
+            indices = torch.cat(indices_list).tolist()
+        else:
+            indices = []
+
+        subset = torch.utils.data.Subset(data, indices)
+        cache[label_key] = subset
+        return subset
+
+    def get_loader(self, mode, label, batch_size=128, shuffle=None):
+        subset = self.get_set(mode, label)
+        shuffle = (mode == 'train')
+
+        use_cuda = torch.cuda.is_available()
+        cpu_count = os.cpu_count() or 2
+        num_workers = max(2, min(8, cpu_count // 2))
+        loader_kwargs = {
+            "batch_size": batch_size,
+            "shuffle": shuffle,
+            "pin_memory": use_cuda,
+        }
+        if num_workers > 0:
+            loader_kwargs.update({
+                "num_workers": num_workers,
+                "persistent_workers": True,
+                "prefetch_factor": 2,
+            })
+        return torch.utils.data.DataLoader(subset, **loader_kwargs)
+
+
+DATASET_CHOICES = ("fashion_mnist", "tiny_imagenet", "cifar100")
+
+
+def build_dataset(name: str, **kwargs):
+    """Instantiate an incremental dataset manager by name."""
+    name = name.lower()
+    if name == "fashion_mnist":
+        return IncrementalFashionMNIST(val_ratio=kwargs.get("val_ratio", 0.1))
+    if name == "tiny_imagenet":
+        return IncrementalTinyImageNet(resize=kwargs.get("img_size", 64))
+    if name == "cifar100":
+        return IncrementalCIFAR100(
+            num_classes=kwargs.get("num_classes", 100),
+            resize=kwargs.get("img_size", 32),
+            val_ratio=kwargs.get("val_ratio", 0.1),
+        )
+    raise ValueError(f"Unknown dataset '{name}'. Valid: {DATASET_CHOICES}")
     

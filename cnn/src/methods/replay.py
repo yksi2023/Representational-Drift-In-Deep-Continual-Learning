@@ -11,15 +11,32 @@ from src.utils import EarlyStopping, update_memory
 class ReplayMethod(BaseContinualMethod):
     """Experience Replay: store and replay samples from previous tasks."""
     
-    def __init__(self, *args, memory_size: int = 5000, first_task_only_memory: bool = False, **kwargs):
+    def __init__(self, *args, memory_size: int = 5000,
+                 memory_per_class: Optional[int] = None,
+                 first_task_only_memory: bool = False, **kwargs):
+        """Replay buffer.
+
+        Two allocation modes are supported:
+
+        * ``memory_per_class`` (not None): iCaRL-style per-class exemplar
+          memory. Stores exactly ``memory_per_class`` samples for every
+          class seen so far; previously stored exemplars are never
+          replaced. Total buffer grows linearly with classes seen.
+
+        * Otherwise: fixed total budget ``memory_size`` shared evenly
+          across seen classes. The per-class quota shrinks as more tasks
+          arrive (older exemplars are subsampled to fit).
+        """
         super().__init__(*args, **kwargs)
         self.memory_size = memory_size
+        self.memory_per_class = memory_per_class
         self.first_task_only_memory = first_task_only_memory
         self.memory_set = {"data": [], "labels": []}
-    
+
     def get_training_params(self) -> Dict[str, Any]:
         params = super().get_training_params()
         params["memory_size"] = self.memory_size
+        params["memory_per_class"] = self.memory_per_class
         params["first_task_only_memory"] = self.first_task_only_memory
         return params
     
@@ -95,22 +112,21 @@ class ReplayMethod(BaseContinualMethod):
             print(f"Epoch [{epoch+1}/{self.epochs}], Loss: {epoch_loss:.4f}")
             
             # Validation and early stopping
+            val_loss = None
             if val_loader is not None:
                 val_loss, val_acc = evaluate(
                     self.model, val_loader, self.criterion, self.device,
                     active_classes_range=active_range
                 )
                 print(f"Validation - Loss: {val_loss:.4f}, Acc: {val_acc:.2f}%")
-                
-                if scheduler is not None:
-                    scheduler.step(val_loss)
-                    current_lr = self.optimizer.param_groups[0]['lr']
-                    print(f"Current LR: {current_lr:.6f}")
-                
-                should_stop = early_stopper.step(self.model, val_loss)
-                if should_stop:
-                    print(f"Early stopping triggered at epoch {epoch+1}")
-                    break
+
+            self.step_scheduler(scheduler, val_loss)
+            if scheduler is not None:
+                print(f"Current LR: {self.optimizer.param_groups[0]['lr']:.6f}")
+
+            if val_loader is not None and early_stopper.step(self.model, val_loss):
+                print(f"Early stopping triggered at epoch {epoch+1}")
+                break
         
         if val_loader is not None:
             early_stopper.restore(self.model)
@@ -208,14 +224,19 @@ class ReplayMethod(BaseContinualMethod):
                 class_to_indices[label].append(i)
         
         current_task_classes = set(class_to_indices.keys())
-        seen_labels_set = set(self.memory_set["labels"]) if self.memory_set["labels"] else set()
-        total_classes = len(seen_labels_set.union(current_task_classes)) or 1
-        samples_per_class = max(1, self.memory_size // total_classes)
-        
+
+        # Decide per-class quota for the current task's classes.
+        if self.memory_per_class is not None:
+            samples_per_class = self.memory_per_class
+        else:
+            seen_labels_set = set(self.memory_set["labels"]) if self.memory_set["labels"] else set()
+            total_classes = len(seen_labels_set.union(current_task_classes)) or 1
+            samples_per_class = max(1, self.memory_size // total_classes)
+
         for class_label, indices in class_to_indices.items():
             num_samples = min(samples_per_class, len(indices))
             selected_indices = random.sample(indices, num_samples)
-            
+
             for idx in selected_indices:
                 data, label = train_set[idx]
                 if isinstance(data, torch.Tensor):
@@ -223,6 +244,16 @@ class ReplayMethod(BaseContinualMethod):
                 else:
                     new_data.append(torch.tensor(data).cpu())
                 new_labels.append(int(label))
-        
-        self.memory_set = update_memory(self.memory_set, new_data, new_labels, self.memory_size)
-        print(f"Memory updated: {len(self.memory_set['data'])} total samples")
+
+        if self.memory_per_class is not None:
+            # iCaRL-style: append new exemplars, leave older ones untouched.
+            self.memory_set["data"].extend(new_data)
+            self.memory_set["labels"].extend(new_labels)
+        else:
+            # Total-budget mode: merge + class-balanced prune to memory_size.
+            self.memory_set = update_memory(self.memory_set, new_data, new_labels, self.memory_size)
+
+        classes_in_memory = len(set(self.memory_set["labels"]))
+        print(f"Memory updated: {len(self.memory_set['data'])} samples "
+              f"across {classes_in_memory} classes "
+              f"({samples_per_class}/class this task)")

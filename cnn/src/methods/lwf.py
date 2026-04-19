@@ -132,6 +132,7 @@ class LwFMethod(BaseContinualMethod):
             )
 
             # Validation and early stopping
+            val_loss = None
             if val_loader is not None:
                 val_loss, val_acc = evaluate(
                     self.model,
@@ -142,15 +143,13 @@ class LwFMethod(BaseContinualMethod):
                 )
                 print(f"Validation - Loss: {val_loss:.4f}, Acc: {val_acc:.2f}%")
 
-                if scheduler is not None:
-                    scheduler.step(val_loss)
-                    current_lr = self.optimizer.param_groups[0]["lr"]
-                    print(f"Current LR: {current_lr:.6f}")
+            self.step_scheduler(scheduler, val_loss)
+            if scheduler is not None:
+                print(f"Current LR: {self.optimizer.param_groups[0]['lr']:.6f}")
 
-                should_stop = early_stopper.step(self.model, val_loss)
-                if should_stop:
-                    print(f"Early stopping triggered at epoch {epoch+1}")
-                    break
+            if val_loader is not None and early_stopper.step(self.model, val_loss):
+                print(f"Early stopping triggered at epoch {epoch+1}")
+                break
 
         if val_loader is not None:
             early_stopper.restore(self.model)

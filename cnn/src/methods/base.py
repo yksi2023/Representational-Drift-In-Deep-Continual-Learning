@@ -49,12 +49,19 @@ class BaseContinualMethod(ABC):
         self.use_amp = use_amp
         self.learning_mode = learning_mode
         
-        # Results tracking
-        self.online_results = []
-        self.first_task_results = []
-        
         # Derived
         self.num_tasks = num_classes // increment
+
+        # Results tracking
+        self.online_results = []         # diagonal: acc on task_k after training task_k
+        self.first_task_results = []     # first row: acc on task_0 after training task_k
+        # Full task x training-stage matrix in RNN-compatible format:
+        # {task_idx: [ {loss, accuracy} after stage 0, stage 1, ... ]}
+        self.performance_history: Dict[int, list] = {i: [] for i in range(self.num_tasks)}
+
+        # Snapshot the initial LR of each param group so we can restore it
+        # at the start of every task (schedulers mutate param_groups[*]['lr']).
+        self._initial_lrs = [g['lr'] for g in self.optimizer.param_groups]
     
     @property
     def method_name(self) -> str:
@@ -71,20 +78,50 @@ class BaseContinualMethod(ABC):
             "increment": self.increment,
         }
     
-    def create_scheduler(self) -> Optional[torch.optim.lr_scheduler._LRScheduler]:
-        """Create a learning rate scheduler for the current task."""
+    def create_scheduler(self):
+        """Create a learning rate scheduler for the current task.
+
+        Returned object may be a ReduceLROnPlateau (stepped with val_loss)
+        or CosineAnnealingLR (stepped once per epoch). The training loops
+        check which kind via isinstance.
+        """
         if self.scheduler_config is None:
             return None
-        if self.scheduler_config['type'] == 'ReduceLROnPlateau':
+        cfg = self.scheduler_config
+        if cfg['type'] == 'ReduceLROnPlateau':
             return torch.optim.lr_scheduler.ReduceLROnPlateau(
                 self.optimizer,
-                mode=self.scheduler_config.get('mode', 'min'),
-                factor=self.scheduler_config.get('factor', 0.5),
-                patience=self.scheduler_config.get('patience', 3),
-                min_lr=self.scheduler_config.get('min_lr', 1e-4)
+                mode=cfg.get('mode', 'min'),
+                factor=cfg.get('factor', 0.5),
+                patience=cfg.get('patience', 3),
+                min_lr=cfg.get('min_lr', 1e-4),
+            )
+        if cfg['type'] == 'CosineAnnealingLR':
+            # Reset base_lrs to current LR so each new task starts the
+            # cosine cycle from the full LR (optimizer.state was cleared).
+            for g in self.optimizer.param_groups:
+                g['initial_lr'] = g['lr']
+            return torch.optim.lr_scheduler.CosineAnnealingLR(
+                self.optimizer,
+                T_max=cfg.get('T_max', self.epochs),
+                eta_min=cfg.get('eta_min', 1e-4),
             )
         return None
     
+    def step_scheduler(self, scheduler, val_loss: Optional[float] = None) -> None:
+        """Step a scheduler with the right signature.
+
+        - ReduceLROnPlateau: needs val_loss; silently skipped if None.
+        - CosineAnnealingLR / other _LRScheduler: stepped once (per epoch).
+        """
+        if scheduler is None:
+            return
+        if isinstance(scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau):
+            if val_loss is not None:
+                scheduler.step(val_loss)
+        else:
+            scheduler.step()
+
     def get_task_loaders(self, task_idx: int) -> Tuple:
         """Get train/test/val loaders for a task."""
         start_class = task_idx * self.increment
@@ -152,6 +189,39 @@ class BaseContinualMethod(ABC):
             active_classes_range=first_task_range
         )
         return acc
+
+    def _evaluate_and_record_all(self, current_task_idx: int) -> None:
+        """Evaluate on every task (past, current, future) and append to performance_history.
+
+        Mirrors the RNN's task x training-stage matrix so we can plot the same
+        accuracy heatmap. Also populates legacy arrays used by downstream
+        plotting (online / first-task).
+        """
+        self.model.eval()
+        print(f"\n--- Evaluation after Task {current_task_idx + 1} ---")
+        for eval_idx in range(self.num_tasks):
+            start_cls = eval_idx * self.increment
+            end_cls = start_cls + self.increment
+            test_loader = self.experiment_dataset.get_loader(
+                mode='test', label=range(start_cls, end_cls),
+                batch_size=self.batch_size, shuffle=False,
+            )
+            task_range = (start_cls, end_cls) if self.learning_mode == "til" else None
+            loss, acc_pct = evaluate(
+                self.model, test_loader, self.criterion, self.device,
+                active_classes_range=task_range,
+            )
+            # Store accuracy as fraction [0,1] for heatmap-friendly format.
+            self.performance_history[eval_idx].append({
+                "loss": float(loss),
+                "accuracy": float(acc_pct) / 100.0,
+            })
+            tag = "*" if eval_idx == current_task_idx else " "
+            print(f"  {tag} task_{eval_idx}: loss={loss:.4f}, acc={acc_pct:.2f}%")
+
+        # Legacy aggregates used by the old line plots
+        self.online_results.append(self.performance_history[current_task_idx][-1]["accuracy"] * 100.0)
+        self.first_task_results.append(self.performance_history[0][-1]["accuracy"] * 100.0)
     
     def save_checkpoint(self, task_idx: int, extra_metadata: Optional[Dict] = None) -> None:
         """Save checkpoint after a task."""
@@ -175,11 +245,21 @@ class BaseContinualMethod(ABC):
         with open(metrics_path, "w", encoding="utf-8") as f:
             json.dump(metrics, f, ensure_ascii=False, indent=2)
         print(f"Training metrics saved to {metrics_path}")
+
+        # Full accuracy matrix (task x training-stage), RNN-compatible format
+        perf_dict = {f"task_{k}": v for k, v in self.performance_history.items()}
+        perf_path = os.path.join(self.save_dir, "performance_history.json")
+        with open(perf_path, "w", encoding="utf-8") as f:
+            json.dump(perf_dict, f, ensure_ascii=False, indent=2)
+        print(f"Performance history saved to {perf_path}")
     
     def run(self) -> None:
         """Main training loop over all tasks."""
         for task_idx in range(self.num_tasks):
             self.optimizer.state.clear()
+            # Restore starting LR so schedulers begin each task from the top.
+            for g, lr0 in zip(self.optimizer.param_groups, self._initial_lrs):
+                g['lr'] = lr0
             start_class = task_idx * self.increment
             end_class = start_class + self.increment
             
@@ -195,14 +275,9 @@ class BaseContinualMethod(ABC):
             self.train_task(task_idx, train_loader, val_loader)
             self.after_task(task_idx, train_loader)
             
-            # Checkpoint and evaluation
+            # Checkpoint and full-matrix evaluation on every task
             self.save_checkpoint(task_idx, self._get_extra_metadata())
-            
-            acc = self.evaluate_task(task_idx, test_loader)
-            self.online_results.append(acc)
-            
-            first_task_acc = self.evaluate_first_task()
-            self.first_task_results.append(first_task_acc)
+            self._evaluate_and_record_all(task_idx)
         
         # Final save and comprehensive evaluation
         self.save_metrics()

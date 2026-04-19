@@ -26,6 +26,7 @@ def incremental_learning(
     compile_model: bool = False,
     channels_last: bool = False,
     first_task_only_memory: bool = False,
+    memory_per_class: Optional[int] = None,
     ewc_lambda: float = 1000.0,
     gpm_threshold: float = 0.99,
     lwf_lambda: float = 1.0,
@@ -63,12 +64,15 @@ def incremental_learning(
         lwf_temperature: Distillation temperature for LwF.
         learning_mode: 'til' for task-incremental or 'cil' for class-incremental.
     """
-    # Backend/runtime optimizations
+    # Backend/runtime optimizations.
+    # NOTE: TF32 is configured once in run_experiment.py via the new API
+    # (torch.backends.cudnn.conv.fp32_precision). We intentionally do NOT
+    # touch torch.backends.cuda.matmul.allow_tf32 / cudnn.allow_tf32 here
+    # because those legacy flags trigger a deprecation warning in PyTorch
+    # 2.9+ (Context.cpp:80).
     if device.type == 'cuda':
         try:
             torch.backends.cudnn.benchmark = True
-            torch.backends.cuda.matmul.allow_tf32 = True
-            torch.backends.cudnn.allow_tf32 = True
         except Exception:
             pass
     if channels_last:
@@ -110,6 +114,7 @@ def incremental_learning(
     if method_lower == 'replay':
         method_kwargs = {
             "memory_size": memory_size,
+            "memory_per_class": memory_per_class,
             "first_task_only_memory": first_task_only_memory,
         }
     elif method_lower == 'ewc':

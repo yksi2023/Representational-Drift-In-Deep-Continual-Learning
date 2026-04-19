@@ -1,13 +1,14 @@
 #!/usr/bin/env bash
-# Train all CL methods for CNN on TinyImageNet (pretrained ResNet18).
+# Train all CL methods for CNN on CIFAR-100 using a from-scratch
+# CIFAR-stem ResNet18 with GroupNorm + Weight Standardization + Zero-gamma.
 # Results: cnn/experiments/exp<i>_cnn_<method>/
 # Timing:  cnn/experiments/exp<i>_cnn_timing.txt
-# Usage:   bash cnn.sh <i>
+# Usage:   bash cifar_cnn.sh <i>
 set -euo pipefail
 source activate drift
 
 if [ $# -lt 1 ]; then
-    echo "Usage: bash cnn.sh <i>   # e.g. 'bash cnn.sh 1' -> exp1_cnn_*"
+    echo "Usage: bash cifar_cnn.sh <i>   # e.g. 'bash cifar_cnn.sh 2' -> exp2_cnn_*"
     exit 1
 fi
 IDX="$1"
@@ -18,18 +19,20 @@ EXP_ROOT="${WORK_DIR}/experiments"
 TIMING="${EXP_ROOT}/exp${IDX}_cnn_timing.txt"
 mkdir -p "${EXP_ROOT}"; : > "${TIMING}"
 
+# CIFAR-100 (100 classes, 10 tasks x 10 classes), from-scratch CIFAR-stem ResNet18 (GN+WS+Zero-gamma).
 COMMON=(
-    --dataset tiny_imagenet
-    --model resnet18_pretrained
+    --dataset cifar100
+    --model resnet18_cifar_gn
     --increment 10
-    --epochs 50
-    --batch_size 512
+    --epochs 100
+    --batch_size 128
     --optimizer sgd
-    --lr 0.4
-    --patience 10
-    --freeze_until layer2
-    --channels_last
+    --lr 0.1
+    --momentum 0.9
+    --scheduler cosine      # cosine anneal over the 100 epochs of each task
+    --patience 100          # effectively disable early stopping for from-scratch runs
     --amp
+    --channels_last
 )
 
 cd "${WORK_DIR}"
@@ -47,8 +50,8 @@ run_one() {
 T0=$(date +%s)
 
 run_one normal    --method normal
-run_one replay    --method replay --memory_size 20000
-run_one ewc       --method ewc    --ewc_lambda 1000.0
+run_one replay    --method replay --memory_per_class 200
+run_one ewc       --method ewc    --ewc_lambda 500.0
 run_one lwf       --method lwf    --lwf_lambda 1.0 --lwf_temperature 2.0
 run_one gpm       --method gpm
 

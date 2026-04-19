@@ -19,7 +19,7 @@ from typing import List
 
 import torch
 
-from src.models import FashionMNISTModel, PretrainedResNet18
+from src.models import MODEL_DEFAULTS, build_model
 from src.checkpoints import list_checkpoints
 from src.analysis import (
     build_reps_cache,
@@ -28,9 +28,10 @@ from src.analysis import (
     run_sample_similarity,
     run_subspace_drift,
     run_gap_drift,
+    plot_cnn_performance,
 )
 from src.eval import plot_performance_from_files
-from datasets import IncrementalFashionMNIST, IncrementalTinyImageNet
+from datasets import build_dataset
 
 
 def parse_args():
@@ -41,8 +42,6 @@ def parse_args():
     parser.add_argument("--max_batches", type=int, default=10)
     parser.add_argument("--output_dir", type=str, default=None,
                         help="Directory to save all analysis results (defaults to ckpt_dir/drift_analysis)")
-    parser.add_argument("--dataset", type=str, default="fashion_mnist",
-                        choices=["fashion_mnist", "tiny_imagenet"])
     parser.add_argument("--amp", action="store_true", help="Use mixed precision")
     parser.add_argument("--neuron_ratio", type=float, default=1.0,
                         help="Ratio of neurons to randomly sample (0.0, 1.0], default: 1.0")
@@ -62,14 +61,37 @@ def setup_environment(args):
     if not 0.0 < args.neuron_ratio <= 1.0:
         raise ValueError("--neuron_ratio must be in range (0.0, 1.0]")
 
-    if args.dataset == "fashion_mnist":
-        data_manager = IncrementalFashionMNIST()
-        model = FashionMNISTModel(output_size=10)
-    elif args.dataset == "tiny_imagenet":
-        data_manager = IncrementalTinyImageNet()
-        model = PretrainedResNet18(num_classes=200)
-    else:
-        raise ValueError("Invalid dataset")
+    # Recover dataset / model / class count from the training config so we
+    # always instantiate the same architecture the checkpoint was saved with.
+    config_path = os.path.join(args.ckpt_dir, "experiment_config.json")
+    if not os.path.exists(config_path):
+        raise FileNotFoundError(
+            f"Missing {config_path}. Re-run training with the current run_experiment.py "
+            f"so it writes dataset/model/num_classes into the config.")
+    with open(config_path, "r", encoding="utf-8") as f:
+        cfg = json.load(f)
+
+    dataset_name = cfg["dataset"]
+    defaults = MODEL_DEFAULTS[dataset_name]
+    model_name = cfg.get("model", defaults["model"])
+    num_classes = cfg.get("num_classes", defaults["num_classes"])
+    img_size = cfg.get("img_size", defaults["img_size"])
+
+    data_manager = build_dataset(
+        dataset_name,
+        num_classes=num_classes,
+        img_size=img_size,
+        val_ratio=cfg.get("val_ratio", 0.1),
+    )
+    model = build_model(
+        model_name,
+        num_classes=num_classes,
+        pretrained=not cfg.get("no_pretrained", False),
+        freeze_layers=cfg.get("freeze_layers", ""),
+        freeze_until=cfg.get("freeze_until"),
+    )
+    print(f"Dataset: {dataset_name} (num_classes={num_classes}, img_size={img_size})")
+    print(f"Model:   {model_name}")
 
     if args.output_dir is None:
         args.output_dir = os.path.join(args.ckpt_dir, "drift_analysis")
@@ -173,12 +195,16 @@ def main():
         output_dir=args.output_dir,
     )
 
-    # 6. Performance plots
+    # 6. Performance plots (line plots + task x stage accuracy heatmap)
     print("\n[6/6] Generating performance plots...")
     try:
         plot_performance_from_files(args.ckpt_dir, args.output_dir)
     except FileNotFoundError as e:
-        print(f"  Skipping performance plots: {e}")
+        print(f"  Skipping line plots: {e}")
+    try:
+        plot_cnn_performance(args.ckpt_dir, args.output_dir)
+    except FileNotFoundError as e:
+        print(f"  Skipping accuracy matrix: {e}")
 
     print("\n" + "=" * 60)
     print("ANALYSIS COMPLETE")
