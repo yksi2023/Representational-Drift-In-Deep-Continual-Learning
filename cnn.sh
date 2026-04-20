@@ -30,6 +30,7 @@ COMMON=(
     --freeze_until layer2
     --channels_last
     --amp
+    --scheduler cosine
 )
 
 cd "${WORK_DIR}"

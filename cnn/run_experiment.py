@@ -31,7 +31,7 @@ def main():
     parser.add_argument("--img_size", type=int, default=None,
                         help="Override input image size. Defaults per dataset.")
     parser.add_argument("--no_pretrained", action="store_true",
-                        help="For resnet18_pretrained / bit_r50x1: disable pretrained weights.")
+                        help="For resnet18_pretrained / bit_s_r50x1_in1k: disable pretrained weights.")
     parser.add_argument("--no_comprehensive_eval", action="store_true", help="Skip comprehensive evaluation after training")
     parser.add_argument("--patience", type=int, default=5, help="Early stopping patience")
     parser.add_argument("--min_delta", type=float, default=0.0, help="Minimum improvement in val loss to reset patience")
@@ -40,7 +40,7 @@ def main():
     parser.add_argument("--amp", action="store_true", help="Use mixed precision (AMP) on CUDA")
     parser.add_argument("--compile", action="store_true", help="Compile model with torch.compile (PyTorch 2.x)")
     parser.add_argument("--channels_last", action="store_true", help="Use channels_last memory format for CNNs")
-    # Freezing options (applicable to resnet18_pretrained and bit_r50x1)
+    # Freezing options (applicable to resnet18_pretrained and bit_s_r50x1_in1k)
     parser.add_argument("--freeze_layers", type=str, default="", help="Comma-separated layer names (resnet18_pretrained only)")
     parser.add_argument("--freeze_until", type=str, default=None,
                         help="Freeze all layers up to and including this one. Names differ per model.")

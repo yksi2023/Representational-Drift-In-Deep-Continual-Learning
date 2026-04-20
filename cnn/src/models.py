@@ -1,3 +1,5 @@
+import os
+
 import torch
 from torch import nn
 from torch.nn import functional as F
@@ -257,39 +259,54 @@ class ResNet18CIFAR_GN(nn.Module):
 
 
 # ---------------------------------------------------------------------------
-# Google BiT (ResNetV2-50x1, GN + WS, ImageNet-21k pretrained) via timm.
+# BiT-S ResNetV2-50x1 (GN + WS), pretrained on ImageNet-1k ONLY (ILSVRC-2012).
+# Uses Google's official BiT-S release; no ImageNet-21k data ever seen.
 # ---------------------------------------------------------------------------
 
 
-class BiTResNet50(nn.Module):
-    """Google BiT-S ResNetV2-50x1 wrapper.
+class BiTResNet50_IN1k(nn.Module):
+    """BiT-S R50x1 wrapper (GN + Weight Standardization), pretrained on
+    ImageNet-1k only.
 
-    Loads ``resnetv2_50x1_bit`` from timm (GN + WS + pre-activation blocks),
-    swaps the classifier head, and supports coarse freezing.
+    Architecture: timm's ``resnetv2_50x1_bit`` skeleton (pre-activation
+    ResNetV2 blocks with GroupNorm + WS, identical to BiT-M).
+    Weights: Google's publicly released ``BiT-S-R50x1.npz`` checkpoint,
+    trained exclusively on ILSVRC-2012 (1000 classes). Downloaded once
+    to ``<repo_root>/pretrained_weights/`` (alongside the codebase) so
+    the cache stays with the project.
 
-    Freezable groups follow timm's module layout:
-    ``stem, stages.0, stages.1, stages.2, stages.3, head``.
+    Freezable groups follow timm's module layout::
+        stem, stages.0, stages.1, stages.2, stages.3, head
     """
     _layer_order = ["stem", "stages.0", "stages.1", "stages.2", "stages.3", "head"]
-
+    _BIT_S_URL = "https://storage.googleapis.com/bit_models/BiT-S-R50x1.npz"
+    # Resolve the repo root: .../drift_refactored/cnn/src/models.py -> .../drift_refactored
+    _PRETRAINED_DIR = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+        "pretrained_weights",
+    )
+ 
     def __init__(self, num_classes: int, pretrained: bool = True,
-                 freeze_until=None, model_name: str = "resnetv2_50x1_bit"):
+                 freeze_until=None):
         super().__init__()
         try:
             import timm
         except ImportError as e:
             raise ImportError(
-                "timm is required for BiTResNet50. Install via 'pip install timm'."
+                "timm is required for BiTResNet50_IN1k. Install via 'pip install timm'."
             ) from e
 
-        # timm >=0.9 uses tagged model names; fall back to the known good tag.
-        try:
-            self.backbone = timm.create_model(model_name, pretrained=pretrained,
-                                              num_classes=num_classes)
-        except RuntimeError:
-            self.backbone = timm.create_model(f"{model_name}.goog_in21k",
-                                              pretrained=pretrained,
-                                              num_classes=num_classes)
+        # Build architecture with the pretrain-time head (1000 classes) so
+        # the BiT .npz loader can match all tensors. The head is always
+        # reset afterwards: TF-Hub "feature-vector" BiT variants ship with
+        # an empty head (our converter fills it with zeros as a placeholder),
+        # so re-initializing the classifier unconditionally is the safe path.
+        self.backbone = timm.create_model(
+            "resnetv2_50x1_bit", pretrained=False, num_classes=1000,
+        )
+        if pretrained:
+            self._load_bit_s_weights()
+        self.backbone.reset_classifier(num_classes=num_classes)
 
         self._frozen_names = set()
         if freeze_until:
@@ -302,6 +319,16 @@ class BiTResNet50(nn.Module):
                 mod = self._resolve_module(name)
                 for p in mod.parameters():
                     p.requires_grad = False
+
+    def _load_bit_s_weights(self) -> None:
+        os.makedirs(self._PRETRAINED_DIR, exist_ok=True)
+        ckpt_path = os.path.join(self._PRETRAINED_DIR, "BiT-S-R50x1.npz")
+        if not os.path.exists(ckpt_path):
+            print(f"Downloading BiT-S-R50x1 weights to {ckpt_path} ...")
+            torch.hub.download_url_to_file(self._BIT_S_URL, ckpt_path)
+        # timm ships a BiT-npz loader in its resnetv2 module.
+        from timm.models.resnetv2 import _load_weights
+        _load_weights(self.backbone, ckpt_path)
 
     def _resolve_module(self, path: str) -> nn.Module:
         mod = self.backbone
@@ -329,13 +356,14 @@ class BiTResNet50(nn.Module):
 
 
 MODEL_DEFAULTS = {
-    "fashion_mnist": {"model": "mlp",               "num_classes": 10,  "img_size": 28},
-    "tiny_imagenet": {"model": "resnet18_pretrained", "num_classes": 200, "img_size": 224},
-    "cifar100":      {"model": "resnet18_cifar_gn", "num_classes": 100, "img_size": 32},
+    "fashion_mnist":    {"model": "mlp",                "num_classes": 10,  "img_size": 28},
+    "tiny_imagenet":    {"model": "resnet18_pretrained","num_classes": 200, "img_size": 224},
+    "cifar100":         {"model": "resnet18_cifar_gn",  "num_classes": 100, "img_size": 32},
+    "imagenet21k_p200": {"model": "bit_s_r50x1_in1k",   "num_classes": 200, "img_size": 224},
 }
 
 MODEL_CHOICES = ("mlp", "resnet18_tiny", "resnet18_pretrained",
-                 "resnet18_cifar_gn", "bit_r50x1")
+                 "resnet18_cifar_gn", "bit_s_r50x1_in1k")
 
 
 def build_model(name: str, num_classes: int, **kwargs) -> nn.Module:
@@ -354,8 +382,8 @@ def build_model(name: str, num_classes: int, **kwargs) -> nn.Module:
         )
     if name == "resnet18_cifar_gn":
         return ResNet18CIFAR_GN(num_classes=num_classes)
-    if name == "bit_r50x1":
-        return BiTResNet50(
+    if name == "bit_s_r50x1_in1k":
+        return BiTResNet50_IN1k(
             num_classes=num_classes,
             pretrained=kwargs.get("pretrained", True),
             freeze_until=kwargs.get("freeze_until"),

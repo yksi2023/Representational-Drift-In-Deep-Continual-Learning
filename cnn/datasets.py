@@ -355,7 +355,139 @@ class IncrementalCIFAR100:
         return torch.utils.data.DataLoader(subset, **loader_kwargs)
 
 
-DATASET_CHOICES = ("fashion_mnist", "tiny_imagenet", "cifar100")
+class IncrementalImageNet21kP200:
+    '''ImageNet-21k-P 200-class subset (disjoint from ImageNet-1k) for CL.
+
+    Expects the pre-split on-disk layout produced by
+    ``cnn/tools/prepare_imagenet21k_p200.py``::
+
+        <root>/train/<wnid>/*.JPEG
+        <root>/val/<wnid>/*.JPEG
+        <root>/test/<wnid>/*.JPEG
+
+    Args:
+        root: directory containing the ``train/``, ``val/``, ``test/`` folders.
+        num_classes: keep only the first ``num_classes`` wnids (alphabetical
+            by folder name; ImageFolder's default ordering). 200 = full subset.
+        resize: input resolution. 224 is the BiT / IN1k default.
+    '''
+    def __init__(self, root: str = "data/imagenet21k_p200",
+                 num_classes: int = 200, resize: int = 224):
+        if not (1 <= num_classes <= 200):
+            raise ValueError(f"num_classes must be in [1, 200], got {num_classes}")
+        self.num_classes = num_classes
+
+        imagenet_mean = [0.485, 0.456, 0.406]
+        imagenet_std = [0.229, 0.224, 0.225]
+
+        train_tf = transforms.Compose([
+            transforms.RandomResizedCrop(resize, scale=(0.7, 1.0)),
+            transforms.RandomHorizontalFlip(),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=imagenet_mean, std=imagenet_std),
+        ])
+        eval_tf = transforms.Compose([
+            transforms.Resize(int(round(resize * 256 / 224))),
+            transforms.CenterCrop(resize),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=imagenet_mean, std=imagenet_std),
+        ])
+
+        full_train = datasets.ImageFolder(os.path.join(root, "train"), transform=train_tf)
+        full_val = datasets.ImageFolder(os.path.join(root, "val"), transform=eval_tf)
+        full_test = datasets.ImageFolder(os.path.join(root, "test"), transform=eval_tf)
+
+        n_on_disk = len(full_train.classes)
+        if n_on_disk < num_classes:
+            raise ValueError(
+                f"num_classes={num_classes} exceeds the {n_on_disk} classes on disk at {root}")
+
+        if num_classes < n_on_disk:
+            self.train_set = torch.utils.data.Subset(
+                full_train, [i for i, t in enumerate(full_train.targets) if t < num_classes])
+            self.val_set = torch.utils.data.Subset(
+                full_val, [i for i, t in enumerate(full_val.targets) if t < num_classes])
+            self.test_set = torch.utils.data.Subset(
+                full_test, [i for i, t in enumerate(full_test.targets) if t < num_classes])
+        else:
+            self.train_set = full_train
+            self.val_set = full_val
+            self.test_set = full_test
+
+        self._class_indices = {"train": {}, "test": {}, "val": {}}
+        self._precompute_class_indices()
+        self._cache_indices = {"train": {}, "test": {}, "val": {}}
+
+    def _precompute_class_indices(self):
+        for mode, dataset in [("train", self.train_set),
+                              ("test", self.test_set),
+                              ("val", self.val_set)]:
+            # Handle both ImageFolder (has .targets) and Subset(ImageFolder).
+            if hasattr(dataset, "targets"):
+                targets = torch.tensor(dataset.targets, dtype=torch.long)
+            else:
+                base_targets = dataset.dataset.targets
+                targets = torch.tensor([base_targets[i] for i in dataset.indices],
+                                       dtype=torch.long)
+            class_to_indices = {}
+            for lbl in range(self.num_classes):
+                mask = (targets == lbl)
+                if mask.any():
+                    class_to_indices[lbl] = mask.nonzero(as_tuple=True)[0]
+            self._class_indices[mode] = class_to_indices
+
+    def get_set(self, mode, label):
+        if mode == 'train':
+            data = self.train_set
+        elif mode == 'test':
+            data = self.test_set
+        elif mode == 'val':
+            data = self.val_set
+        else:
+            raise ValueError("Mode should be 'train', 'test', or 'val'")
+
+        try:
+            label_key = tuple(sorted(int(x) for x in label))
+        except TypeError:
+            label_key = (int(label),)
+
+        cache = self._cache_indices[mode]
+        if label_key in cache:
+            return cache[label_key]
+
+        class_indices = self._class_indices[mode]
+        indices_list = [class_indices[lbl] for lbl in label_key if lbl in class_indices]
+        if indices_list:
+            indices = torch.cat(indices_list).tolist()
+        else:
+            indices = []
+
+        subset = torch.utils.data.Subset(data, indices)
+        cache[label_key] = subset
+        return subset
+
+    def get_loader(self, mode, label, batch_size=64, shuffle=None):
+        subset = self.get_set(mode, label)
+        shuffle = (mode == 'train')
+
+        use_cuda = torch.cuda.is_available()
+        cpu_count = os.cpu_count() or 2
+        num_workers = max(2, min(8, cpu_count // 2))
+        loader_kwargs = {
+            "batch_size": batch_size,
+            "shuffle": shuffle,
+            "pin_memory": use_cuda,
+        }
+        if num_workers > 0:
+            loader_kwargs.update({
+                "num_workers": num_workers,
+                "persistent_workers": True,
+                "prefetch_factor": 2,
+            })
+        return torch.utils.data.DataLoader(subset, **loader_kwargs)
+
+
+DATASET_CHOICES = ("fashion_mnist", "tiny_imagenet", "cifar100", "imagenet21k_p200")
 
 
 def build_dataset(name: str, **kwargs):
@@ -370,6 +502,12 @@ def build_dataset(name: str, **kwargs):
             num_classes=kwargs.get("num_classes", 100),
             resize=kwargs.get("img_size", 32),
             val_ratio=kwargs.get("val_ratio", 0.1),
+        )
+    if name == "imagenet21k_p200":
+        return IncrementalImageNet21kP200(
+            root=kwargs.get("root", "data/imagenet21k_p200"),
+            num_classes=kwargs.get("num_classes", 200),
+            resize=kwargs.get("img_size", 224),
         )
     raise ValueError(f"Unknown dataset '{name}'. Valid: {DATASET_CHOICES}")
     

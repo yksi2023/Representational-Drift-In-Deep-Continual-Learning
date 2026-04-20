@@ -39,7 +39,7 @@ default_layers_for() {
             echo "conv_layer.4,conv_layer.5,conv_layer.6,conv_layer.7" ;;
         resnet18_cifar_gn)
             echo "layer2.1.relu2,layer3.0.relu2,layer3.1.relu2,layer4.0.relu2,layer4.1.relu2" ;;
-        bit_r50x1)
+        bit_s_r50x1_in1k)
             echo "backbone.stages.2.blocks.5.norm3,backbone.stages.3.blocks.2.norm3" ;;
         *)
             echo "" ;;

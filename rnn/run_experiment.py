@@ -22,8 +22,8 @@ def main():
     parser.add_argument("--ewc_lambda", type=float, default=100.0, help="EWC regularization strength")
     parser.add_argument("--fisher_samples", type=int, default=200, help="Samples for Fisher estimation")
     # Replay
-    parser.add_argument("--memory_per_task", type=int, default=50, help="Trials stored per past task for replay")
-    parser.add_argument("--replay_num_tasks", type=int, default=1, help="Past tasks to sample per replay step (default=1 for speed)")
+    parser.add_argument("--memory_per_task", type=int, default=100, help="Trials stored per past task for replay")
+    parser.add_argument("--replay_num_tasks", type=int, default=5, help="Past tasks to sample per replay step (default=1 for speed)")
     # LwF
     parser.add_argument("--lwf_lambda", type=float, default=1.0, help="LwF distillation loss weight")
     parser.add_argument("--lwf_temperature", type=float, default=2.0, help="LwF softmax temperature")
