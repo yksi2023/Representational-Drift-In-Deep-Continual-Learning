@@ -198,18 +198,30 @@ class ReplayMethod(BaseContinualMethod):
         class_to_indices = {}
         targets = None
         
-        if isinstance(train_set, torch.utils.data.Subset) and hasattr(train_set.dataset, 'targets'):
-            try:
-                full_targets = train_set.dataset.targets
-                indices = train_set.indices
-                if torch.is_tensor(indices):
-                    indices = indices.tolist()
+        # Walk through (possibly nested) Subsets down to the base dataset's
+        # targets, composing the index mapping at each level. Without this,
+        # ImageNet-21k-P (which wraps ImageFolder in Subset twice) would fall
+        # through to the slow per-sample label read below.
+        try:
+            ds = train_set
+            sub_indices = None
+            while isinstance(ds, torch.utils.data.Subset):
+                layer_idx = ds.indices
+                if torch.is_tensor(layer_idx):
+                    layer_idx = layer_idx.tolist()
+                if sub_indices is None:
+                    sub_indices = list(layer_idx)
+                else:
+                    sub_indices = [layer_idx[i] for i in sub_indices]
+                ds = ds.dataset
+            if hasattr(ds, 'targets') and sub_indices is not None:
+                full_targets = ds.targets
                 if torch.is_tensor(full_targets):
-                    targets = full_targets[indices].tolist()
-                elif isinstance(full_targets, list):
-                    targets = [int(full_targets[i]) for i in indices]
-            except Exception:
-                targets = None
+                    targets = full_targets[sub_indices].tolist()
+                else:
+                    targets = [int(full_targets[i]) for i in sub_indices]
+        except Exception:
+            targets = None
         
         if targets is not None:
             for i, label in enumerate(targets):

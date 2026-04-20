@@ -32,10 +32,10 @@ COMMON=(
     --increment 5
     --img_size 224
     --epochs 30
-    --batch_size 256
+    --batch_size 128
     --optimizer sgd
     --lr 0.01
-    --patience 10
+    --patience 5
     --channels_last
     --amp
     --scheduler cosine
