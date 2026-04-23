@@ -5,27 +5,46 @@
 set -euo pipefail
 source activate drift
 
-if [ $# -lt 1 ]; then
-    echo "Usage: bash analysis_cnn.sh <i> [LAYERS]"
+INDICES=()
+LAYERS_OVERRIDE=""
+for arg in "$@"; do
+    if [[ "$arg" =~ ^[0-9]+$ ]]; then
+        INDICES+=("$arg")
+    else
+        LAYERS_OVERRIDE="$arg"
+    fi
+done
+
+if [ ${#INDICES[@]} -eq 0 ]; then
+    echo "Usage: bash analysis_cnn.sh <i> [<i2> ...] [LAYERS]"
     echo "  <i>      experiment index -> matches exp<i>_cnn_*"
     echo "  LAYERS   optional comma-separated layer names (override auto-default)"
     exit 1
 fi
-IDX="$1"
-LAYERS_OVERRIDE="${2:-}"
-PREFIX="exp${IDX}_cnn_"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 WORK_DIR="${SCRIPT_DIR}/cnn"
 
 cd "${WORK_DIR}"
 
-shopt -s nullglob
-dirs=("${WORK_DIR}/experiments/${PREFIX}"*/)
-shopt -u nullglob
+# ------------------------------------------------------------------
+# Collect all matching directories for every requested index.
+# ------------------------------------------------------------------
+all_dirs=()
+for IDX in "${INDICES[@]}"; do
+    PREFIX="exp${IDX}_cnn_"
+    shopt -s nullglob
+    dirs=("${WORK_DIR}/experiments/${PREFIX}"*/)
+    shopt -u nullglob
+    if [ ${#dirs[@]} -eq 0 ]; then
+        echo "No directories matched: ${WORK_DIR}/experiments/${PREFIX}*"
+    else
+        all_dirs+=("${dirs[@]}")
+    fi
+done
 
-if [ ${#dirs[@]} -eq 0 ]; then
-    echo "No directories matched: ${WORK_DIR}/experiments/${PREFIX}*"
+if [ ${#all_dirs[@]} -eq 0 ]; then
+    echo "No experiment directories matched any provided indices."
     exit 1
 fi
 
@@ -40,16 +59,16 @@ default_layers_for() {
         resnet18_cifar_gn)
             echo "layer2.1.relu2,layer3.0.relu2,layer3.1.relu2,layer4.0.relu2,layer4.1.relu2" ;;
         bit_s_r50x1_in1k)
-            echo "backbone.stages.2.blocks.5.norm3,backbone.stages.3.blocks.2.norm3" ;;
+            echo "backbone.stages.0,backbone.stages.1,backbone.stages.2,backbone.stages.3,backbone.norm" ;;
         *)
             echo "" ;;
     esac
 }
 
-echo "Analyzing ${#dirs[@]} experiment(s) with prefix '${PREFIX}':"
-printf '  - %s\n' "${dirs[@]##*/experiments/}"
+echo "Analyzing ${#all_dirs[@]} experiment(s):"
+printf '  - %s\n' "${all_dirs[@]##*/experiments/}"
 
-for d in "${dirs[@]}"; do
+for d in "${all_dirs[@]}"; do
     d="${d%/}"
     cfg="${d}/experiment_config.json"
     if [ -n "${LAYERS_OVERRIDE}" ]; then
@@ -70,8 +89,7 @@ for d in "${dirs[@]}"; do
     echo "==> Analyzing: $(basename "${d}")   (layers=${layers})"
     python analyze_drift.py \
         --ckpt_dir "${d}" \
-        --layers "${layers}" \
-        --amp
+        --layers "${layers}" 
 done
 
 echo ""

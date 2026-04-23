@@ -28,8 +28,8 @@ mkdir -p "${EXP_ROOT}"; : > "${TIMING}"
 COMMON=(
     --dataset imagenet21k_p200
     --model bit_s_r50x1_in1k
-    --num_classes 100
-    --increment 5
+    --num_classes 200
+    --increment 10
     --img_size 224
     --epochs 30
     --batch_size 128
@@ -37,7 +37,6 @@ COMMON=(
     --lr 0.01
     --patience 5
     --channels_last
-    --amp
     --scheduler cosine
 )
 
@@ -57,8 +56,8 @@ T0=$(date +%s)
 
 # Replay budget: 20 exemplars / class x 100 classes = 2000 total (iCaRL-style).
 run_one normal    --method normal
-run_one replay    --method replay --memory_per_class 100
-run_one ewc       --method ewc    --ewc_lambda 1000.0
+run_one replay    --method replay --memory_per_class 200
+run_one ewc       --method ewc    --ewc_lambda 1e6
 run_one lwf       --method lwf    --lwf_lambda 1.0 --lwf_temperature 2.0
 run_one gpm       --method gpm
 

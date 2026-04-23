@@ -37,6 +37,7 @@ def _get_svd_device() -> torch.device:
 def _torch_pca(
     X: torch.Tensor,
     device: torch.device,
+    tag: str = "",
 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """Exact PCA via ``torch.linalg.svd`` (GPU when available).
 
@@ -53,12 +54,27 @@ def _torch_pca(
     X = X.to(device=device, dtype=torch.float32)
     X = X - X.mean(dim=0, keepdim=True)
     # full_matrices=False => thin SVD: U (N, k), S (k,), Vh (k, D), k=min(N,D)
-    _, S, Vh = torch.linalg.svd(X, full_matrices=False)
+    # cuSOLVER can fail on ill-conditioned / repeated-singular-value matrices
+    # (common for large conv feature maps). Fall back to CPU LAPACK which is
+    # more robust, adding tiny noise to break exact degeneracies.
+    try:
+        _, S, Vh = torch.linalg.svd(X, full_matrices=False)
+    except torch._C._LinAlgError:
+        X_cpu = X.detach().cpu().to(torch.float64)
+        try:
+            _, S, Vh = torch.linalg.svd(X_cpu, full_matrices=False)
+        except torch._C._LinAlgError:
+            X_cpu = X_cpu + 1e-6 * torch.randn_like(X_cpu)
+            _, S, Vh = torch.linalg.svd(X_cpu, full_matrices=False)
     n = X.shape[0]
     eigvals = (S * S) / max(n - 1, 1)
     total = eigvals.sum().clamp_min(1e-12)
     evr = eigvals / total
-    return evr.cpu(), eigvals.cpu(), Vh.cpu()
+    return (
+        evr.to(dtype=torch.float32, device="cpu"),
+        eigvals.to(dtype=torch.float32, device="cpu"),
+        Vh.to(dtype=torch.float32, device="cpu"),
+    )
 
 
 def _determine_k(evr: torch.Tensor, threshold: float) -> int:
@@ -75,6 +91,7 @@ def _compute_all_pca(
     sorted_indices: List[int],
     threshold: float,
     device: torch.device,
+    layer_name: str,
 ) -> Tuple[
     Dict[int, torch.Tensor],  # evr per ckpt
     Dict[int, torch.Tensor],  # eigvals per ckpt
@@ -92,7 +109,11 @@ def _compute_all_pca(
     ks: List[int] = []
     prs: List[float] = []
     for idx in sorted_indices:
-        evr, eigvals, components = _torch_pca(reps_by_task[idx], device)
+        evr, eigvals, components = _torch_pca(
+            reps_by_task[idx],
+            device,
+            tag=f"layer={layer_name}, checkpoint=T{idx}",
+        )
         evr_by[idx] = evr
         eig_by[idx] = eigvals
         comp_by[idx] = components
@@ -285,7 +306,11 @@ def run_subspace_drift(
         # decomposition (baseline components) and the per-ckpt dimensionality
         # plots. Used to be two independent CPU full-SVD loops.
         evr_by, _eig_by, comp_by, ks, prs = _compute_all_pca(
-            reps_by_task, sorted_indices, threshold=threshold, device=device,
+            reps_by_task,
+            sorted_indices,
+            threshold=threshold,
+            device=device,
+            layer_name=layer,
         )
         evr = evr_by[baseline_idx].numpy()
         k = ks[sorted_indices.index(baseline_idx)]

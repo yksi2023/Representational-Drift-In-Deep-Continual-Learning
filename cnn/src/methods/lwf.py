@@ -59,7 +59,7 @@ class LwFMethod(BaseContinualMethod):
         use_cuda_amp = bool(self.use_amp and (self.device.type == "cuda"))
         scaler = torch.amp.GradScaler() if use_cuda_amp else None
 
-        old_classes = self.increment
+        old_classes = task_idx * self.increment  # all classes seen so far
         use_distill = (task_idx > 0) and (self.teacher_model is not None) and (old_classes > 0)
 
         for epoch in range(self.epochs):
@@ -155,10 +155,7 @@ class LwFMethod(BaseContinualMethod):
             early_stopper.restore(self.model)
 
     def after_task(self, task_idx: int, train_loader) -> None:
-        """Snapshot only Task-1 model and keep it fixed as the teacher."""
-        if task_idx != 0:
-            return
-
+        """Snapshot current model as the teacher for the next task."""
         self.teacher_model = copy.deepcopy(self.model).to(self.device)
         self.teacher_model.eval()
         for param in self.teacher_model.parameters():
