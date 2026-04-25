@@ -22,5 +22,5 @@ pass*
 scripts
 
 # Pretrained weight cache (BiT-S .npz etc.)
-pretrained_weights/
+
 .aider*
