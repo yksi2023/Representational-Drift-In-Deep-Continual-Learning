@@ -22,5 +22,6 @@ pass*
 scripts
 
 # Pretrained weight cache (BiT-S .npz etc.)
-
+*CLAUDE.md
 .aider*
+.vscode

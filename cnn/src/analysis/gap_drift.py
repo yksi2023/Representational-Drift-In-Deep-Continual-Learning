@@ -8,12 +8,8 @@ CNN analogue of the RNN ``vector_drift`` analysis, with time-dependent vectors
   along the feature dimension per sample and average over samples. Group by
   gap = j - i.
 
-- **ERV** (ensemble rate vector): per-neuron mean activation across probe
-  samples ``(D,)`` for each checkpoint. Pearson correlation between ERVs of
-  two checkpoints. Group by gap.
-
-Both curves are plotted per layer on one figure, revealing drift saturation
-as gap grows.
+All layers are plotted on a single figure, revealing per-layer drift
+saturation as gap grows.
 """
 import json
 import os
@@ -39,20 +35,6 @@ def _sample_pv_pearson(rep_i: torch.Tensor, rep_j: torch.Tensor) -> float:
     return r.mean().item()
 
 
-def _erv_pearson(rep_i: torch.Tensor, rep_j: torch.Tensor) -> float:
-    """Pearson correlation of ensemble rate vectors (per-neuron mean over samples)."""
-    erv_i = rep_i.float().mean(dim=0)  # (D,)
-    erv_j = rep_j.float().mean(dim=0)
-    r = _pearson(erv_i, erv_j, dim=0)  # scalar tensor
-    return r.item()
-
-
-_VECTOR_FNS = {
-    "Sample-PV": _sample_pv_pearson,
-    "ERV": _erv_pearson,
-}
-
-
 def _compute_corr_vs_gap(
     reps_by_task: Dict[int, torch.Tensor],
     sorted_indices: List[int],
@@ -72,25 +54,26 @@ def _compute_corr_vs_gap(
     return gaps, means, stds
 
 
-def _plot_corr_vs_gap(
-    results: Dict[str, Tuple[List[int], List[float], List[float]]],
-    layer: str,
+def _plot_all_layers(
+    all_results: Dict[str, Tuple[List[int], List[float], List[float]]],
     output_path: str,
 ):
+    """Plot Sample-PV correlation vs gap for all layers on one figure."""
     fig, ax = plt.subplots(figsize=(10, 6))
-    colors = {"Sample-PV": "#1f77b4", "ERV": "#ff7f0e"}
+    cmap = plt.get_cmap("tab10")
     all_gaps: List[int] = []
-    for vec_name in ["Sample-PV", "ERV"]:
-        gaps, means, stds = results[vec_name]
-        all_gaps.extend(gaps)
-        ax.errorbar(gaps, means, yerr=stds, marker="o", capsize=4,
-                    label=vec_name, color=colors[vec_name])
 
-    ax.set_title(f"Representational Drift vs Task Gap — layer: {layer}")
+    for idx, (layer, (gaps, means, stds)) in enumerate(all_results.items()):
+        color = cmap(idx % 10)
+        all_gaps.extend(gaps)
+        ax.errorbar(gaps, means, yerr=stds, marker="o", capsize=3,
+                    label=layer, color=color, linewidth=1.5, markersize=4)
+
+    ax.set_title("Sample-PV Drift vs Task Gap")
     ax.set_xlabel("Task Gap")
     ax.set_ylabel("Pearson Correlation")
     ax.set_ylim(-0.1, 1.05)
-    ax.legend()
+    ax.legend(fontsize=8, loc="lower left")
     ax.grid(True, linestyle="--", alpha=0.6)
     if all_gaps:
         ax.set_xticks(sorted(set(all_gaps)))
@@ -105,7 +88,7 @@ def run_gap_drift(
     layer_names: List[str],
     output_dir: str,
 ) -> None:
-    """Compute Sample-PV and ERV Pearson correlation vs task gap, per layer."""
+    """Compute Sample-PV Pearson correlation vs task gap, all layers on one plot."""
     out_subdir = os.path.join(output_dir, "gap_drift")
     os.makedirs(out_subdir, exist_ok=True)
 
@@ -115,27 +98,21 @@ def run_gap_drift(
         return
 
     summary: Dict[str, Dict] = {}
+    all_layer_results: Dict[str, Tuple[List[int], List[float], List[float]]] = {}
+
     for layer in layer_names:
         print(f"  Gap drift for layer: {layer}")
         reps_by_task = {t: reps_cache[t][layer] for t in sorted_indices}
 
-        layer_res = {}
-        for vec_name, fn in _VECTOR_FNS.items():
-            gaps, means, stds = _compute_corr_vs_gap(reps_by_task, sorted_indices, fn)
-            layer_res[vec_name] = (gaps, means, stds)
-            if gaps:
-                print(f"    {vec_name}: gap=1 r={means[0]:.4f}, "
-                      f"gap={gaps[-1]} r={means[-1]:.4f}")
+        gaps, means, stds = _compute_corr_vs_gap(reps_by_task, sorted_indices, _sample_pv_pearson)
+        all_layer_results[layer] = (gaps, means, stds)
+        if gaps:
+            print(f"    Sample-PV: gap=1 r={means[0]:.4f}, "
+                  f"gap={gaps[-1]} r={means[-1]:.4f}")
 
-        safe = layer.replace(".", "_").replace("/", "_")
-        _plot_corr_vs_gap(
-            layer_res, layer, os.path.join(out_subdir, f"gap_drift_{safe}.png")
-        )
+        summary[layer] = {"Sample-PV": {"gaps": gaps, "means": means, "stds": stds}}
 
-        summary[layer] = {
-            name: {"gaps": g, "means": m, "stds": s}
-            for name, (g, m, s) in layer_res.items()
-        }
+    _plot_all_layers(all_layer_results, os.path.join(out_subdir, "gap_drift_sample_pv.png"))
 
     with open(os.path.join(out_subdir, "gap_drift_metrics.json"), "w", encoding="utf-8") as f:
         json.dump(summary, f, indent=2, ensure_ascii=False)

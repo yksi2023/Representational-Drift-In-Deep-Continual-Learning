@@ -187,7 +187,7 @@ def main():
         threshold=args.subspace_threshold,
     )
 
-    # 5. Gap-based vector drift (Sample-PV + ERV Pearson vs task gap)
+    # 5. Gap-based vector drift (Sample-PV Pearson vs task gap)
     print("\n[5/6] Running gap-based vector drift analysis...")
     run_gap_drift(
         reps_cache=reps_cache,

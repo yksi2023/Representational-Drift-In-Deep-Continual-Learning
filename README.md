@@ -5,8 +5,9 @@ Train continual learning models (CNN / RNN) and analyze how their internal repre
 ## Setup
 
 ```bash
-pip install -r requirements.txt
+conda create -n drift python=3.11
 conda activate drift
+pip install -r requirements.txt
 ```
 
 ## Quick Start
