@@ -25,3 +25,4 @@ scripts
 *CLAUDE.md
 .aider*
 .vscode
+pretrained_weights/
