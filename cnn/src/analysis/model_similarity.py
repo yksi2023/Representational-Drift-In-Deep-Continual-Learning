@@ -18,11 +18,9 @@ def plot_similarity_matrix(
     metric_label: str = "Cosine Similarity",
 ):
     """Plot similarity matrix as a heatmap with colormap."""
-    fig, ax = plt.subplots(figsize=(10, 8))
+    fig, ax = plt.subplots(figsize=(7, 6))
     matrix_np = sim_matrix.numpy()
     im = ax.imshow(matrix_np, cmap="viridis", vmin=0, vmax=1)
-    cbar = ax.figure.colorbar(im, ax=ax, shrink=0.8)
-    cbar.ax.set_ylabel(metric_label, rotation=-90, va="bottom")
 
     ax.set_xticks(range(len(task_indices)))
     ax.set_yticks(range(len(task_indices)))
@@ -33,9 +31,8 @@ def plot_similarity_matrix(
     for i in range(len(task_indices)):
         for j in range(len(task_indices)):
             ax.text(j, i, f"{matrix_np[i, j]:.2f}",
-                    ha="center", va="center", color="black", fontsize=8)
+                    ha="center", va="center", color="black", fontsize=10)
 
-    ax.set_title(f"Representation {metric_label} Matrix\nLayer: {layer_name}")
     ax.set_xlabel("Model after Task")
     ax.set_ylabel("Model after Task")
     plt.tight_layout()
@@ -82,7 +79,6 @@ def plot_similarity_decay_profile(
         all_gaps.extend(gaps)
         ax.errorbar(gaps, means, yerr=stds, marker="o", capsize=5, label=layer_name)
 
-    ax.set_title("Similarity Decay Profile")
     ax.set_xlabel("Task Gap")
     ax.set_ylabel("Cosine Similarity")
     ax.set_ylim(0, 1)
@@ -123,8 +119,8 @@ def run_model_similarity(
         reps_list = [all_reps[layer][t] for t in sorted_task_indices]
         sim_matrix = compute_pairwise_similarity_matrix(reps_list)
         safe_layer_name = layer.replace(".", "_").replace("/", "_")
-        matrix_path = os.path.join(matrix_dir, f"similarity_matrix_{safe_layer_name}.png")
+        matrix_path = os.path.join(matrix_dir, f"similarity_matrix_{safe_layer_name}.pdf")
         plot_similarity_matrix(sim_matrix, sorted_task_indices, layer, matrix_path)
 
-    profile_path = os.path.join(output_dir, "similarity_decay_profile.png")
+    profile_path = os.path.join(output_dir, "similarity_decay_profile.pdf")
     plot_similarity_decay_profile(all_reps, sorted_task_indices, layer_names, profile_path)

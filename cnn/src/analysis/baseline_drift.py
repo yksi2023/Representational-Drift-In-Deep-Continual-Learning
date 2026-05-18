@@ -43,14 +43,12 @@ def plot_drift_results(results: List[Dict], output_dir: str):
         l2_stds = [d["l2_dist_std"] for d in layer_data]
         ax2.errorbar(xs, l2_means, yerr=l2_stds, label=layer, capsize=5, marker="o")
 
-    ax1.set_title("Cosine Similarity (Solid) vs Shuffled Baseline (Dashed)")
     ax1.set_xlabel("Task Index")
     ax1.set_ylabel("Cosine Similarity")
     ax1.set_xticks(xticks)
     ax1.legend()
     ax1.grid(True, linestyle="--", alpha=0.6)
 
-    ax2.set_title("L2 Distance Drift")
     ax2.set_xlabel("Task Index")
     ax2.set_ylabel("L2 Distance")
     ax2.set_xticks(xticks)
@@ -58,7 +56,7 @@ def plot_drift_results(results: List[Dict], output_dir: str):
     ax2.grid(True, linestyle="--", alpha=0.6)
 
     plt.tight_layout()
-    output_path = os.path.join(output_dir, "drift_plot.png")
+    output_path = os.path.join(output_dir, "drift_plot.pdf")
     plt.savefig(output_path)
     print(f"Drift plot saved to {output_path}")
     plt.close()
@@ -91,7 +89,6 @@ def plot_activation_distribution(
         ax.hist(v_b, bins=50, alpha=0.5, label="Baseline", density=True, color="blue")
         ax.hist(v_c, bins=50, alpha=0.5, label=f"Task {task_idx}", density=True, color="orange")
 
-        ax.set_title(f"Sample {idx.item()} - Activation Distribution")
         ax.set_xlabel("Activation Value")
         ax.set_ylabel("Density")
         ax.legend()
@@ -100,7 +97,7 @@ def plot_activation_distribution(
     plt.tight_layout()
     save_dir = os.path.join(output_dir, "distributions", layer_name)
     os.makedirs(save_dir, exist_ok=True)
-    plt.savefig(os.path.join(save_dir, f"task_{task_idx}.png"))
+    plt.savefig(os.path.join(save_dir, f"task_{task_idx}.pdf"))
     plt.close()
 
 

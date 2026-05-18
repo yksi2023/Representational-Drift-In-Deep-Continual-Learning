@@ -69,17 +69,16 @@ def _plot_all_layers(
         ax.errorbar(gaps, means, yerr=stds, marker="o", capsize=3,
                     label=layer, color=color, linewidth=1.5, markersize=4)
 
-    ax.set_title("Sample-PV Drift vs Task Gap")
     ax.set_xlabel("Task Gap")
     ax.set_ylabel("Pearson Correlation")
     ax.set_ylim(-0.1, 1.05)
-    ax.legend(fontsize=8, loc="lower left")
+    ax.legend(loc="lower left")
     ax.grid(True, linestyle="--", alpha=0.6)
     if all_gaps:
         ax.set_xticks(sorted(set(all_gaps)))
 
     plt.tight_layout()
-    plt.savefig(output_path, dpi=150)
+    plt.savefig(output_path)
     plt.close()
 
 
@@ -112,7 +111,7 @@ def run_gap_drift(
 
         summary[layer] = {"Sample-PV": {"gaps": gaps, "means": means, "stds": stds}}
 
-    _plot_all_layers(all_layer_results, os.path.join(out_subdir, "gap_drift_sample_pv.png"))
+    _plot_all_layers(all_layer_results, os.path.join(out_subdir, "gap_drift_sample_pv.pdf"))
 
     with open(os.path.join(out_subdir, "gap_drift_metrics.json"), "w", encoding="utf-8") as f:
         json.dump(summary, f, indent=2, ensure_ascii=False)

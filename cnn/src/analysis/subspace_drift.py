@@ -181,17 +181,15 @@ def _plot_coding_fraction(fracs, task_indices, layer, k, threshold, path):
     ax.bar(indices[valid], fracs[valid], color="#1f77b4", alpha=0.8, label="Coding subspace")
     ax.bar(indices[valid], 1.0 - fracs[valid], bottom=fracs[valid],
            color="#ff7f0e", alpha=0.8, label="Null subspace")
-    ax.set_title(f"Drift Subspace Decomposition — layer: {layer}\n"
-                 f"(coding dim k={k}, variance threshold={threshold:.0%})")
     ax.set_xlabel("Model after Task")
     ax.set_ylabel("Fraction of Drift Variance")
     ax.set_ylim(0, 1.05)
     ax.set_xticks(indices)
-    ax.set_xticklabels([f"T{t}" for t in task_indices], rotation=45, ha="right", fontsize=8)
+    ax.set_xticklabels([f"T{t}" for t in task_indices], rotation=45, ha="right")
     ax.legend(loc="upper right")
     ax.grid(True, axis="y", linestyle="--", alpha=0.5)
     plt.tight_layout()
-    plt.savefig(path, dpi=150)
+    plt.savefig(path)
     plt.close()
 
 
@@ -203,16 +201,15 @@ def _plot_drift_norms(coding_norms, null_norms, task_indices, layer, k, path):
     fig, ax = plt.subplots(figsize=(12, 6))
     ax.plot(indices[valid], coding_norms[valid], marker="o", label=f"Coding (k={k})")
     ax.plot(indices[valid], null_norms[valid], marker="s", label="Null")
-    ax.set_title(f"Drift Magnitude by Subspace — layer: {layer}")
     ax.set_xlabel("Model after Task")
     ax.set_ylabel("Mean L2 Norm of Drift")
     ax.set_xticks(indices[valid])
     ax.set_xticklabels([f"T{task_indices[i]}" for i in indices[valid]],
-                       rotation=45, ha="right", fontsize=8)
+                       rotation=45, ha="right")
     ax.legend()
     ax.grid(True, linestyle="--", alpha=0.5)
     plt.tight_layout()
-    plt.savefig(path, dpi=150)
+    plt.savefig(path)
     plt.close()
 
 
@@ -227,14 +224,13 @@ def _plot_variance_explained(evr, k, layer, path):
     if k <= len(cumvar):
         ax.axvline(k, color="red", linestyle="--", label=f"k={k} ({cumvar[k - 1]:.1%})")
         ax.axhline(cumvar[k - 1], color="red", linestyle=":", alpha=0.5)
-    ax.set_title(f"Baseline PCA Cumulative Variance — layer: {layer}")
     ax.set_xlabel("Number of Principal Components")
     ax.set_ylabel("Cumulative Variance Explained")
     ax.set_ylim(0, 1.05)
     ax.legend()
     ax.grid(True, linestyle="--", alpha=0.5)
     plt.tight_layout()
-    plt.savefig(path, dpi=150)
+    plt.savefig(path)
     plt.close()
 
 
@@ -246,24 +242,21 @@ def _plot_dimensionality(ks, prs, task_indices, layer, threshold, path):
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 6))
 
     ax1.plot(indices, ks, marker="o", color="#1f77b4")
-    ax1.set_title(f"Coding Dimensionality (k) — layer: {layer}\n"
-                  f"(variance threshold={threshold:.0%})")
     ax1.set_xlabel("Model after Task")
     ax1.set_ylabel("k (number of PCs)")
     ax1.set_xticks(indices)
-    ax1.set_xticklabels(labels, rotation=45, ha="right", fontsize=8)
+    ax1.set_xticklabels(labels, rotation=45, ha="right")
     ax1.grid(True, linestyle="--", alpha=0.5)
 
     ax2.plot(indices, prs, marker="s", color="#ff7f0e")
-    ax2.set_title(f"Participation Ratio — layer: {layer}")
     ax2.set_xlabel("Model after Task")
     ax2.set_ylabel("Participation Ratio")
     ax2.set_xticks(indices)
-    ax2.set_xticklabels(labels, rotation=45, ha="right", fontsize=8)
+    ax2.set_xticklabels(labels, rotation=45, ha="right")
     ax2.grid(True, linestyle="--", alpha=0.5)
 
     plt.tight_layout()
-    plt.savefig(path, dpi=150)
+    plt.savefig(path)
     plt.close()
 
 
@@ -326,19 +319,19 @@ def run_subspace_drift(
 
         _plot_coding_fraction(
             coding_fracs, sorted_indices, layer, k, threshold,
-            os.path.join(out_subdir, f"coding_fraction_{safe}.png"),
+            os.path.join(out_subdir, f"coding_fraction_{safe}.pdf"),
         )
         _plot_drift_norms(
             coding_norms, null_norms, sorted_indices, layer, k,
-            os.path.join(out_subdir, f"drift_norms_{safe}.png"),
+            os.path.join(out_subdir, f"drift_norms_{safe}.pdf"),
         )
         _plot_variance_explained(
             evr, k, layer,
-            os.path.join(out_subdir, f"variance_explained_{safe}.png"),
+            os.path.join(out_subdir, f"variance_explained_{safe}.pdf"),
         )
         _plot_dimensionality(
             ks, prs, sorted_indices, layer, threshold,
-            os.path.join(out_subdir, f"dimensionality_{safe}.png"),
+            os.path.join(out_subdir, f"dimensionality_{safe}.pdf"),
         )
 
         summary[layer] = {

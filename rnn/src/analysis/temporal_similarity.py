@@ -11,7 +11,7 @@ blocks show how PVs at each timestep change across training.
 Both cosine similarity and Pearson correlation variants are produced.
 """
 import os
-from typing import List
+from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 import torch
@@ -70,8 +70,6 @@ def _plot_full_matrix(
     full_matrix = np.clip(full_matrix, 0, 1)
     im = ax.imshow(full_matrix, cmap='viridis', vmin=0, vmax=1, aspect='equal',
                    interpolation='none')
-    cbar = fig.colorbar(im, ax=ax, shrink=0.8)
-    cbar.ax.set_ylabel(metric_label, rotation=-90, va="bottom")
 
     # Draw grid lines at checkpoint boundaries
     for k in range(1, n_checkpoints):
@@ -84,16 +82,15 @@ def _plot_full_matrix(
     labels = [task_names[k] if k < len(task_names) else f"task_{k}"
               for k in range(n_checkpoints)]
     ax.set_xticks(centres)
-    ax.set_xticklabels(labels, fontsize=7, rotation=45, ha='right')
+    ax.set_xticklabels(labels, rotation=45, ha='right')
     ax.set_yticks(centres)
-    ax.set_yticklabels(labels, fontsize=7)
+    ax.set_yticklabels(labels)
 
-    ax.set_title(f"Cross-Checkpoint PV {metric_label}\nprobe: {probe_task}")
     ax.set_xlabel("Checkpoint / Time step")
     ax.set_ylabel("Checkpoint / Time step")
 
     plt.tight_layout()
-    plt.savefig(output_path, dpi=200)
+    plt.savefig(output_path)
     plt.close()
 
 
@@ -113,6 +110,38 @@ def _build_full_matrix(reps_3d_list: List[torch.Tensor], metric: str) -> np.ndar
     return full_matrix
 
 
+def _get_epoch_boundaries(probe_task: str, seq_len: int, batch_size: int = 200, seed: int = 42) -> Optional[Dict[str, Tuple[int, int]]]:
+    """Regenerate the probe trial to recover epoch boundaries (time step indices).
+
+    Returns:
+        Dict mapping epoch name -> (start_step, end_step) with concrete integers,
+        or None if the task is not found in the registry.
+    """
+    try:
+        from datasets import get_default_config, get_task_generator
+    except ImportError:
+        return None
+
+    try:
+        gen_fn = get_task_generator(probe_task)
+    except ValueError:
+        return None
+
+    config = get_default_config()
+    config['rng'] = np.random.RandomState(seed)
+    trial = gen_fn(config, batch_size, mode='random')
+
+    if not hasattr(trial, 'epochs') or not trial.epochs:
+        return None
+
+    boundaries: Dict[str, Tuple[int, int]] = {}
+    for name, (start, end) in trial.epochs.items():
+        s = 0 if start is None else int(start)
+        e = seq_len if end is None else int(end)
+        boundaries[name] = (s, e)
+    return boundaries
+
+
 def run_temporal_similarity(
     exp_dir: str,
     probe_tasks: List[str],
@@ -122,8 +151,10 @@ def run_temporal_similarity(
 ) -> None:
     """Generate temporal hidden state similarity analysis.
 
-    For each probe task produces two full cross-checkpoint matrices
-    (cosine similarity and Pearson correlation).
+    For each probe task produces:
+      - Full cross-checkpoint matrices (cosine + Pearson) over all time steps.
+      - Epoch-split matrices when epoch boundaries are available:
+        fix1 only, and stim1+go1 (stimulus onset to end).
 
     Args:
         exp_dir: Experiment directory containing representations/.
@@ -151,10 +182,42 @@ def run_temporal_similarity(
         seq_len = reps_3d_list[0].shape[1]
         total_len = n_checkpoints * seq_len
 
+        # --- Full matrix (all time steps) ---
         for metric, label in [("cosine", "Cosine Similarity"), ("pearson", "Pearson Correlation")]:
             full_matrix = _build_full_matrix(reps_3d_list, metric)
-            fname = f"cross_checkpoint_{metric}_{probe_task}.png"
+            fname = f"cross_checkpoint_{metric}_{probe_task}.pdf"
             out_path = os.path.join(out_subdir, fname)
             _plot_full_matrix(full_matrix, seq_len, n_checkpoints, task_names,
                               probe_task, out_path, metric_label=label)
             print(f"    {label} matrix ({total_len}x{total_len}) saved to {out_path}")
+
+        # --- Epoch-split matrices ---
+        epochs = _get_epoch_boundaries(probe_task, seq_len)
+        if epochs is None:
+            continue
+
+        # Define splits: fix1 alone, stim1+go1 together
+        splits: List[Tuple[str, int, int]] = []
+        if 'fix1' in epochs:
+            s, e = epochs['fix1']
+            splits.append(('fix1', s, e))
+        # stim onset to end of trial (stim1 + go1 merged)
+        stim_start = None
+        if 'stim1' in epochs:
+            stim_start = epochs['stim1'][0]
+        elif 'go1' in epochs:
+            stim_start = epochs['go1'][0]
+        if stim_start is not None:
+            splits.append(('stim1_go1', stim_start, seq_len))
+
+        for split_name, t_start, t_end in splits:
+            sliced_list = [r[:, t_start:t_end, :] for r in reps_3d_list]
+            split_seq_len = t_end - t_start
+            split_total = n_checkpoints * split_seq_len
+            for metric, label in [("cosine", "Cosine Similarity"), ("pearson", "Pearson Correlation")]:
+                mat = _build_full_matrix(sliced_list, metric)
+                fname = f"cross_checkpoint_{metric}_{probe_task}_{split_name}.pdf"
+                out_path = os.path.join(out_subdir, fname)
+                _plot_full_matrix(mat, split_seq_len, n_checkpoints, task_names,
+                                  probe_task, out_path, metric_label=label)
+                print(f"    {label} [{split_name}] ({split_total}x{split_total}) saved to {out_path}")

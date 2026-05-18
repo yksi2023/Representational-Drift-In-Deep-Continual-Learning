@@ -128,42 +128,49 @@ class EWCMethod(BaseContinualMethod):
         """Compute Fisher information after first task."""
         if task_idx == 0:
             print("Computing Fisher Information Matrix for first task...")
-            self.fisher_dict, self.optimal_params = self._compute_fisher_information(train_loader)
+            self.fisher_dict, self.optimal_params = self._compute_fisher_information(train_loader, task_idx)
             print(f"Fisher information computed for {len(self.fisher_dict)} parameters")
     
-    def _compute_fisher_information(self, data_loader, num_samples=None):
+    def _compute_fisher_information(self, data_loader, task_idx: int, num_samples=None):
         """Compute diagonal Fisher Information Matrix for EWC."""
         self.model.eval()
         fisher_dict = {}
         optimal_params = {}
-        
+
+        active_range = self.get_active_classes_range(task_idx)
+
         for name, param in self.model.named_parameters():
             if param.requires_grad:
                 fisher_dict[name] = torch.zeros_like(param.data)
                 optimal_params[name] = param.data.clone()
-        
+
+        batch_count = 0
         sample_count = 0
         for inputs, labels in data_loader:
             if num_samples is not None and sample_count >= num_samples:
                 break
-            
+
             inputs = inputs.to(self.device)
             labels = labels.to(self.device)
-            
+
             self.model.zero_grad()
             outputs = self.model(inputs)
-            loss = self.criterion(outputs, labels)
+            if active_range is not None:
+                start_cls, end_cls = active_range
+                loss = self.criterion(outputs[:, start_cls:end_cls], labels - start_cls)
+            else:
+                loss = self.criterion(outputs, labels)
             loss.backward()
-            
+
             for name, param in self.model.named_parameters():
                 if param.requires_grad and param.grad is not None:
                     fisher_dict[name] += param.grad.detach() ** 2
-            
+
+            batch_count += 1
             sample_count += inputs.size(0)
-        
-        total_samples = sample_count if num_samples is None else min(sample_count, num_samples)
+
         for name in fisher_dict:
-            fisher_dict[name] /= max(1, total_samples)
-        
+            fisher_dict[name] /= max(1, batch_count)
+
         self.model.train()
         return fisher_dict, optimal_params

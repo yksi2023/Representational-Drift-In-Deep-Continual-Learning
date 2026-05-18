@@ -48,7 +48,6 @@ def plot_drift_results(results: List[Dict], task_names: List[str], output_dir: s
 
         line = ax1.errorbar(tasks_idx, cos_means, yerr=cos_stds, label='Cosine Sim', capsize=5, marker='o')
         ax1.plot(tasks_idx, shuffled_means, linestyle='--', color=line[0].get_color(), alpha=0.5, label='Shuffled Baseline')
-        ax1.set_title(f"STPV Cosine Similarity Drift — probe: {probe_task}")
         ax1.set_xlabel("Trained Task Index")
         ax1.set_ylabel("Cosine Similarity")
         ax1.legend()
@@ -57,7 +56,6 @@ def plot_drift_results(results: List[Dict], task_names: List[str], output_dir: s
         l2_means = [next(r for r in task_results if r['target_task'] == t)['l2_dist_mean'] for t in tasks_idx]
         l2_stds = [next(r for r in task_results if r['target_task'] == t)['l2_dist_std'] for t in tasks_idx]
         ax2.errorbar(tasks_idx, l2_means, yerr=l2_stds, label='L2 Distance', capsize=5, marker='o')
-        ax2.set_title(f"STPV L2 Distance Drift — probe: {probe_task}")
         ax2.set_xlabel("Trained Task Index")
         ax2.set_ylabel("L2 Distance")
         ax2.legend()
@@ -66,12 +64,12 @@ def plot_drift_results(results: List[Dict], task_names: List[str], output_dir: s
         # Use task names as x-tick labels if available
         if task_names and len(task_names) == len(tasks_idx):
             ax1.set_xticks(tasks_idx)
-            ax1.set_xticklabels(task_names, rotation=45, ha='right', fontsize=8)
+            ax1.set_xticklabels(task_names, rotation=45, ha='right')
             ax2.set_xticks(tasks_idx)
-            ax2.set_xticklabels(task_names, rotation=45, ha='right', fontsize=8)
+            ax2.set_xticklabels(task_names, rotation=45, ha='right')
 
         plt.tight_layout()
-        output_path = os.path.join(output_dir, f"drift_plot_{probe_task}.png")
+        output_path = os.path.join(output_dir, f"drift_plot_{probe_task}.pdf")
         plt.savefig(output_path)
         print(f"  Drift plot saved to {output_path}")
         plt.close()

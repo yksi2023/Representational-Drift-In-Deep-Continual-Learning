@@ -136,7 +136,6 @@ def _plot_correlation_vs_gap(
         ax.errorbar(gaps, means, yerr=stds, marker='o', capsize=4,
                     label=vec_name, color=colors[vec_name])
 
-    ax.set_title(f"Representational Drift — probe: {probe_task}")
     ax.set_xlabel("Task Gap")
     ax.set_ylabel("Pearson Correlation")
     ax.set_ylim(-0.1, 1.05)
@@ -146,7 +145,7 @@ def _plot_correlation_vs_gap(
         ax.set_xticks(results["STPV"][0])
 
     plt.tight_layout()
-    plt.savefig(output_path, dpi=150)
+    plt.savefig(output_path)
     plt.close()
 
 
@@ -187,6 +186,6 @@ def run_vector_drift(
             if gaps:
                 print(f"    {vec_name}: gap=1 r={means[0]:.4f}, gap={gaps[-1]} r={means[-1]:.4f}")
 
-        out_path = os.path.join(out_subdir, f"vector_drift_{probe_task}.png")
+        out_path = os.path.join(out_subdir, f"vector_drift_{probe_task}.pdf")
         _plot_correlation_vs_gap(results, probe_task, out_path)
         print(f"    Plot saved to {out_path}")

@@ -26,18 +26,15 @@ def plot_similarity_matrix(
     metric_label: str = "Cosine Similarity",
 ):
     """Plot similarity matrix as a heatmap."""
-    fig, ax = plt.subplots(figsize=(12, 10))
+    fig, ax = plt.subplots(figsize=(7, 6))
 
     matrix_np = sim_matrix.numpy()
     im = ax.imshow(matrix_np, cmap='viridis', vmin=0, vmax=1)
 
-    cbar = ax.figure.colorbar(im, ax=ax, shrink=0.8)
-    cbar.ax.set_ylabel(metric_label, rotation=-90, va="bottom")
-
     ax.set_xticks(range(len(task_names)))
     ax.set_yticks(range(len(task_names)))
-    ax.set_xticklabels(task_names, fontsize=7)
-    ax.set_yticklabels(task_names, fontsize=7)
+    ax.set_xticklabels(task_names)
+    ax.set_yticklabels(task_names)
     plt.setp(ax.get_xticklabels(), rotation=45, ha="right", rotation_mode="anchor")
 
     # Annotate cells (only if matrix is not too large)
@@ -45,9 +42,8 @@ def plot_similarity_matrix(
         for i in range(len(task_names)):
             for j in range(len(task_names)):
                 ax.text(j, i, f'{matrix_np[i, j]:.2f}',
-                        ha="center", va="center", color="black", fontsize=9)
+                        ha="center", va="center", color="black", fontsize=10)
 
-    ax.set_title(f'STPV {metric_label} Matrix\nProbe: {probe_task}')
     ax.set_xlabel('Model after Task')
     ax.set_ylabel('Model after Task')
 
@@ -88,6 +84,6 @@ def run_model_similarity(
         ]:
             print(f"  {label} for probe: {probe_task}")
             sim_matrix = matrix_fn(reps_list)
-            matrix_path = os.path.join(matrix_dir, f"{metric}_matrix_{probe_task}.png")
+            matrix_path = os.path.join(matrix_dir, f"{metric}_matrix_{probe_task}.pdf")
             plot_similarity_matrix(sim_matrix, task_names, probe_task, matrix_path,
                                    metric_label=label)

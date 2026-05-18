@@ -21,7 +21,7 @@ multitask/
 pass*
 scripts
 
-# Pretrained weight cache (BiT-S .npz etc.)
+.env
 *CLAUDE.md
 .aider*
 .vscode

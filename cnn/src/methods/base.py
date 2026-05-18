@@ -57,7 +57,7 @@ class BaseContinualMethod(ABC):
         self.first_task_results = []     # first row: acc on task_0 after training task_k
         # Full task x training-stage matrix in RNN-compatible format:
         # {task_idx: [ {loss, accuracy} after stage 0, stage 1, ... ]}
-        self.performance_history: Dict[int, list] = {i: [] for i in range(self.num_tasks)}
+        self.performance_history: Dict[int, list] = {i + 1: [] for i in range(self.num_tasks)}
 
         # Snapshot the initial LR of each param group so we can restore it
         # at the start of every task (schedulers mutate param_groups[*]['lr']).
@@ -212,16 +212,16 @@ class BaseContinualMethod(ABC):
                 active_classes_range=task_range,
             )
             # Store accuracy as fraction [0,1] for heatmap-friendly format.
-            self.performance_history[eval_idx].append({
+            self.performance_history[eval_idx + 1].append({
                 "loss": float(loss),
                 "accuracy": float(acc_pct) / 100.0,
             })
             tag = "*" if eval_idx == current_task_idx else " "
-            print(f"  {tag} task_{eval_idx}: loss={loss:.4f}, acc={acc_pct:.2f}%")
+            print(f"  {tag} task_{eval_idx + 1}: loss={loss:.4f}, acc={acc_pct:.2f}%")
 
         # Legacy aggregates used by the old line plots
-        self.online_results.append(self.performance_history[current_task_idx][-1]["accuracy"] * 100.0)
-        self.first_task_results.append(self.performance_history[0][-1]["accuracy"] * 100.0)
+        self.online_results.append(self.performance_history[current_task_idx + 1][-1]["accuracy"] * 100.0)
+        self.first_task_results.append(self.performance_history[1][-1]["accuracy"] * 100.0)
     
     def save_checkpoint(self, task_idx: int, extra_metadata: Optional[Dict] = None) -> None:
         """Save checkpoint after a task."""
@@ -247,7 +247,7 @@ class BaseContinualMethod(ABC):
         print(f"Training metrics saved to {metrics_path}")
 
         # Full accuracy matrix (task x training-stage), RNN-compatible format
-        perf_dict = {f"task_{k}": v for k, v in self.performance_history.items()}
+        perf_dict = {f"task_{k}": v for k, v in sorted(self.performance_history.items())}
         perf_path = os.path.join(self.save_dir, "performance_history.json")
         with open(perf_path, "w", encoding="utf-8") as f:
             json.dump(perf_dict, f, ensure_ascii=False, indent=2)

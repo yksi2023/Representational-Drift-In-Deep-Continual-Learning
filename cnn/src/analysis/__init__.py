@@ -1,15 +1,16 @@
+import matplotlib
 import matplotlib.pyplot as plt
 
-# Global plot style configuration
+# Global plot style configuration — paper-ready
+matplotlib.rcParams['font.family'] = 'Arial'
+matplotlib.rcParams['font.size'] = 12
 plt.rcParams.update({
-    'axes.titlesize': 16,
-    'axes.labelsize': 22,
-    'xtick.labelsize': 16,
-    'ytick.labelsize': 16,
-    'legend.fontsize': 12,
     'figure.dpi': 150,
     'lines.linewidth': 2,
     'lines.markersize': 8,
+    'savefig.dpi': 500,
+    'savefig.bbox': 'tight',
+    'savefig.pad_inches': 0.02,
 })
 
 from .cache import build_reps_cache

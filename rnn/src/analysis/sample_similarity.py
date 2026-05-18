@@ -40,15 +40,11 @@ def plot_sample_similarity_matrix(
     metric_label: str = "Cosine Similarity",
 ):
     """Plot sample-wise similarity matrix as a colormap."""
-    fig, ax = plt.subplots(figsize=(10, 8))
+    fig, ax = plt.subplots(figsize=(7, 6))
 
     matrix_np = sim_matrix.numpy()
     im = ax.imshow(matrix_np, cmap='viridis', vmin=-1, vmax=1, aspect='auto')
 
-    cbar = ax.figure.colorbar(im, ax=ax, shrink=0.8)
-    cbar.ax.set_ylabel(metric_label, rotation=-90, va="bottom")
-
-    ax.set_title(f'Sample STPV {metric_label} — Model after Task {task_idx}\nProbe: {probe_task}')
     ax.set_xlabel('Sample Index')
     ax.set_ylabel('Sample Index')
 
@@ -90,7 +86,7 @@ def run_sample_similarity(
 
             for metric, label in [("cosine", "Cosine Similarity"), ("pearson", "Pearson Correlation")]:
                 sim_matrix = compute_sample_similarity_matrix(reps, metric=metric)
-                output_path = os.path.join(probe_dir, f"sample_{metric}_after_{task_label}.png")
+                output_path = os.path.join(probe_dir, f"sample_{metric}_after_{task_label}.pdf")
                 plot_sample_similarity_matrix(sim_matrix, task_idx, probe_task, output_path,
                                               metric_label=label)
 

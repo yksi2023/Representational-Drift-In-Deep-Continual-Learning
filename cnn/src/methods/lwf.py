@@ -75,8 +75,12 @@ class LwFMethod(BaseContinualMethod):
 
                 self.optimizer.zero_grad(set_to_none=True)
 
-                with torch.no_grad():
-                    teacher_outputs = self.teacher_model(inputs) if use_distill else None
+                if use_cuda_amp:
+                    with torch.no_grad(), torch.amp.autocast(device_type=self.device.type):
+                        teacher_outputs = self.teacher_model(inputs) if use_distill else None
+                else:
+                    with torch.no_grad():
+                        teacher_outputs = self.teacher_model(inputs) if use_distill else None
 
                 if use_cuda_amp:
                     with torch.amp.autocast(device_type=self.device.type):

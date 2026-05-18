@@ -135,21 +135,17 @@ def _plot_coding_fraction(
         label="Null subspace",
     )
 
-    ax.set_title(
-        f"Drift Subspace Decomposition — probe: {probe_task}\n"
-        f"(coding dim k={k}, variance threshold={threshold:.0%})"
-    )
     ax.set_xlabel("Model after Task")
     ax.set_ylabel("Fraction of Drift Variance")
     ax.set_ylim(0, 1.05)
     ax.set_xticks(indices)
     labels = task_names[:n] if len(task_names) >= n else [str(i) for i in indices]
-    ax.set_xticklabels(labels, rotation=45, ha="right", fontsize=8)
+    ax.set_xticklabels(labels, rotation=45, ha="right")
     ax.legend(loc="upper right")
     ax.grid(True, axis="y", linestyle="--", alpha=0.5)
 
     plt.tight_layout()
-    plt.savefig(output_path, dpi=150)
+    plt.savefig(output_path)
     plt.close()
 
 
@@ -170,17 +166,16 @@ def _plot_drift_norms(
     fig, ax = plt.subplots(figsize=(12, 6))
     ax.plot(indices[valid], coding_norms[valid], marker="o", label=f"Coding (k={k})")
     ax.plot(indices[valid], null_norms[valid], marker="s", label="Null")
-    ax.set_title(f"Drift Magnitude by Subspace — probe: {probe_task}")
     ax.set_xlabel("Model after Task")
     ax.set_ylabel("Mean L2 Norm of Drift")
     labels = task_names[:n] if len(task_names) >= n else [str(i) for i in range(n)]
     ax.set_xticks(indices[valid])
-    ax.set_xticklabels([labels[i] for i in indices[valid]], rotation=45, ha="right", fontsize=8)
+    ax.set_xticklabels([labels[i] for i in indices[valid]], rotation=45, ha="right")
     ax.legend()
     ax.grid(True, linestyle="--", alpha=0.5)
 
     plt.tight_layout()
-    plt.savefig(output_path, dpi=150)
+    plt.savefig(output_path)
     plt.close()
 
 
@@ -199,7 +194,6 @@ def _plot_variance_explained(
     if k <= n_components:
         ax.axvline(k, color="red", linestyle="--", label=f"k={k} ({cumvar[k-1]:.1%})")
         ax.axhline(cumvar[k - 1], color="red", linestyle=":", alpha=0.5)
-    ax.set_title(f"Baseline PCA Cumulative Variance — probe: {probe_task}")
     ax.set_xlabel("Number of Principal Components")
     ax.set_ylabel("Cumulative Variance Explained")
     ax.set_ylim(0, 1.05)
@@ -207,7 +201,7 @@ def _plot_variance_explained(
     ax.grid(True, linestyle="--", alpha=0.5)
 
     plt.tight_layout()
-    plt.savefig(output_path, dpi=150)
+    plt.savefig(output_path)
     plt.close()
 
 
@@ -261,25 +255,22 @@ def _plot_dimensionality_over_checkpoints(
 
     # Left: coding dimensionality k
     ax1.plot(indices, ks, marker='o', color='#1f77b4')
-    ax1.set_title(f"Coding Dimensionality (k) — probe: {probe_task}\n"
-                  f"(variance threshold={threshold:.0%})")
     ax1.set_xlabel("Model after Task")
     ax1.set_ylabel("k (number of PCs)")
     ax1.set_xticks(indices)
-    ax1.set_xticklabels(labels, rotation=45, ha='right', fontsize=8)
+    ax1.set_xticklabels(labels, rotation=45, ha='right')
     ax1.grid(True, linestyle='--', alpha=0.5)
 
     # Right: participation ratio
     ax2.plot(indices, prs, marker='s', color='#ff7f0e')
-    ax2.set_title(f"Participation Ratio — probe: {probe_task}")
     ax2.set_xlabel("Model after Task")
     ax2.set_ylabel("Participation Ratio")
     ax2.set_xticks(indices)
-    ax2.set_xticklabels(labels, rotation=45, ha='right', fontsize=8)
+    ax2.set_xticklabels(labels, rotation=45, ha='right')
     ax2.grid(True, linestyle='--', alpha=0.5)
 
     plt.tight_layout()
-    plt.savefig(output_path, dpi=150)
+    plt.savefig(output_path)
     plt.close()
 
 
@@ -341,15 +332,15 @@ def run_subspace_drift(
 
         _plot_coding_fraction(
             coding_fracs, task_names, probe_task, k, threshold,
-            os.path.join(out_subdir, f"coding_fraction_{probe_task}.png"),
+            os.path.join(out_subdir, f"coding_fraction_{probe_task}.pdf"),
         )
         _plot_drift_norms(
             coding_norms, null_norms, task_names, probe_task, k,
-            os.path.join(out_subdir, f"drift_norms_{probe_task}.png"),
+            os.path.join(out_subdir, f"drift_norms_{probe_task}.pdf"),
         )
         _plot_variance_explained(
             evr, k, probe_task,
-            os.path.join(out_subdir, f"variance_explained_{probe_task}.png"),
+            os.path.join(out_subdir, f"variance_explained_{probe_task}.pdf"),
         )
 
         # Per-checkpoint dimensionality
@@ -361,6 +352,6 @@ def run_subspace_drift(
               f"[{', '.join(f'{p:.1f}' for p in prs)}]")
         _plot_dimensionality_over_checkpoints(
             ks, prs, task_names, probe_task, threshold,
-            os.path.join(out_subdir, f"dimensionality_{probe_task}.png"),
+            os.path.join(out_subdir, f"dimensionality_{probe_task}.pdf"),
         )
         print(f"    Plots saved to {out_subdir}")

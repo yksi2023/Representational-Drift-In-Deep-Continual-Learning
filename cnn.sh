@@ -24,10 +24,10 @@ COMMON=(
     --model resnet18_cifar_gn
     --increment 5
     --epochs 100
-    --batch_size 256
+    --batch_size 512
     --optimizer sgd
-    --lr 0.1
-    --patience 15
+    --lr 0.2
+    --patience 10
     --amp
     --scheduler cosine
 )
@@ -47,9 +47,9 @@ run_one() {
 T0=$(date +%s)
 
 run_one normal    --method normal
-run_one replay    --method replay --memory_size 2000
-run_one ewc       --method ewc    --ewc_lambda 1000.0
-run_one lwf       --method lwf    --lwf_lambda 1.0 --lwf_temperature 2.0
+run_one replay    --method replay --memory_per_class 300
+run_one ewc       --method ewc    --ewc_lambda 1e8
+run_one lwf       --method lwf    --lwf_lambda 30.0 --lwf_temperature 2.0
 run_one gpm       --method gpm
 
 printf 'TOTAL: %ds\n' $(( $(date +%s) - T0 )) | tee -a "${TIMING}"

@@ -45,7 +45,7 @@ run_one() {
 T0=$(date +%s)
 
 run_one normal   --method normal
-run_one replay   --method replay --memory_per_task 50 --replay_num_tasks 1
+run_one replay   --method replay --memory_per_task 300
 run_one ewc      --method ewc --ewc_lambda 100.0 --fisher_samples 200
 run_one lwf      --method lwf --lwf_lambda 1.0 --lwf_temperature 2.0
 run_one hypernet --method hypernet --hnet_beta 0.5 --hnet_chunks 10 --hnet_hidden 128
