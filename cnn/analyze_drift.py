@@ -29,6 +29,7 @@ from src.analysis import (
     run_subspace_drift,
     run_gap_drift,
     plot_cnn_performance,
+    run_sample_umap,
 )
 from src.eval import plot_performance_from_files
 from datasets import build_dataset
@@ -54,6 +55,15 @@ def parse_args():
                         help="Skip sample similarity matrices (costly for many checkpoints)")
     parser.add_argument("--skip_distributions", action="store_true",
                         help="Skip per-task activation histograms in baseline drift")
+    parser.add_argument("--skip_umap", action="store_true",
+                        help="Skip sample UMAP visualization")
+    parser.add_argument("--umap_color_by", type=str, default="class",
+                        choices=["class", "checkpoint"],
+                        help="Color UMAP points by class label or checkpoint index")
+    parser.add_argument("--umap_pca_dims", type=int, default=20,
+                        help="PCA dimensions before UMAP (0 to skip PCA)")
+    parser.add_argument("--umap_trajectory", action="store_true",
+                        help="Draw trajectory lines connecting same sample across checkpoints")
     return parser.parse_args()
 
 
@@ -166,26 +176,41 @@ def main():
         output_dir=args.output_dir,
     )
 
-    # 3. Sample-wise similarity
-    if not args.skip_sample_sim:
-        print("\n[3/6] Running sample similarity analysis...")
-        run_sample_similarity(
+    # 3. Sample-wise similarity  [disabled]
+    # if not args.skip_sample_sim:
+    #     print("\n[3/6] Running sample similarity analysis...")
+    #     run_sample_similarity(
+    #         reps_cache=reps_cache,
+    #         labels=labels,
+    #         layer_names=layer_names,
+    #         output_dir=args.output_dir,
+    #     )
+    # else:
+    #     print("\n[3/6] Skipping sample similarity (--skip_sample_sim).")
+
+    # 4. Coding / null subspace drift decomposition  [disabled]
+    # print("\n[4/6] Running coding/null subspace drift analysis...")
+    # run_subspace_drift(
+    #     reps_cache=reps_cache,
+    #     layer_names=layer_names,
+    #     output_dir=args.output_dir,
+    #     threshold=args.subspace_threshold,
+    # )
+
+    # 4b. Sample UMAP
+    if not args.skip_umap:
+        print("\n[4b/6] Running sample UMAP visualization...")
+        run_sample_umap(
             reps_cache=reps_cache,
             labels=labels,
             layer_names=layer_names,
             output_dir=args.output_dir,
+            pca_dims=args.umap_pca_dims,
+            color_by=args.umap_color_by,
+            show_trajectory=args.umap_trajectory,
         )
     else:
-        print("\n[3/6] Skipping sample similarity (--skip_sample_sim).")
-
-    # 4. Coding / null subspace drift decomposition
-    print("\n[4/6] Running coding/null subspace drift analysis...")
-    run_subspace_drift(
-        reps_cache=reps_cache,
-        layer_names=layer_names,
-        output_dir=args.output_dir,
-        threshold=args.subspace_threshold,
-    )
+        print("\n[4b/6] Skipping sample UMAP (--skip_umap).")
 
     # 5. Gap-based vector drift (Sample-PV Pearson vs task gap)
     print("\n[5/6] Running gap-based vector drift analysis...")

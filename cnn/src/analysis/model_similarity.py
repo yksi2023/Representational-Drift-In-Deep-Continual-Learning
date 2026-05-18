@@ -29,12 +29,6 @@ def plot_similarity_matrix(
     ax.set_yticklabels(tick_labels)
     plt.setp(ax.get_xticklabels(), rotation=45, ha="right", rotation_mode="anchor")
 
-    if len(task_indices) <= 20:
-        for i in range(len(task_indices)):
-            for j in range(len(task_indices)):
-                ax.text(j, i, f"{matrix_np[i, j]:.2f}",
-                        ha="center", va="center", color="black", fontsize=10)
-
     ax.set_xlabel("Model after Task")
     ax.set_ylabel("Model after Task")
     plt.tight_layout()

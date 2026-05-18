@@ -77,17 +77,6 @@ def _plot_matrix_heatmap(
     ax.set_xticklabels(col_labels, rotation=45, ha="right")
     ax.set_yticklabels(row_labels)
 
-    nrows, ncols = matrix.shape
-    cell_fontsize = max(4, min(10, int(90 / max(nrows, ncols))))
-    if nrows <= 25 and ncols <= 25:
-        for i in range(nrows):
-            for j in range(ncols):
-                val = matrix[i, j]
-                if not np.isnan(val):
-                    text = f"{val:.2f}" if val < 10 else f"{val:.1f}"
-                    ax.text(j, i, text, ha="center", va="center",
-                            color="black", fontsize=cell_fontsize)
-
     ax.set_xlabel("After Training on Task")
     ax.set_ylabel("Evaluated Task")
 

@@ -37,13 +37,6 @@ def plot_similarity_matrix(
     ax.set_yticklabels(task_names)
     plt.setp(ax.get_xticklabels(), rotation=45, ha="right", rotation_mode="anchor")
 
-    # Annotate cells (only if matrix is not too large)
-    if len(task_names) <= 20:
-        for i in range(len(task_names)):
-            for j in range(len(task_names)):
-                ax.text(j, i, f'{matrix_np[i, j]:.2f}',
-                        ha="center", va="center", color="black", fontsize=10)
-
     ax.set_xlabel('Model after Task')
     ax.set_ylabel('Model after Task')
 

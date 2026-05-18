@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Train all CL methods for CNN on CIFAR-100 (ResNet18 with GroupNorm, from scratch).
-# 5 classes per task × 20 tasks = 100 classes.
+# Train all CL methods for CNN on Tiny ImageNet (ResNet18 with GroupNorm, from scratch).
+# 5 classes per task × 20 tasks = 100 classes (first 100 of 200).
 # Results: cnn/experiments/exp<i>_cnn_<method>/
 # Timing:  cnn/experiments/exp<i>_cnn_timing.txt
 # Usage:   bash cnn.sh <i>
@@ -20,13 +20,15 @@ TIMING="${EXP_ROOT}/exp${IDX}_cnn_timing.txt"
 mkdir -p "${EXP_ROOT}"; : > "${TIMING}"
 
 COMMON=(
-    --dataset cifar100
-    --model resnet18_cifar_gn
+    --dataset tiny_imagenet
+    --model resnet18_tiny_gn
+    --num_classes 100
+    --img_size 64
     --increment 5
     --epochs 100
-    --batch_size 512
+    --batch_size 256
     --optimizer sgd
-    --lr 0.2
+    --lr 0.1
     --patience 10
     --scheduler cosine
     --seed 42

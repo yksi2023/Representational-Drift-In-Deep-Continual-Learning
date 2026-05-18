@@ -113,7 +113,10 @@ class IncrementalFashionMNIST:
 
 class IncrementalTinyImageNet:
     '''Automatically create data loaders for incremental learning on TinyImageNet dataset'''
-    def __init__(self, resize=64):
+    def __init__(self, resize=64, num_classes: int = 200):
+        if not (1 <= num_classes <= 200):
+            raise ValueError(f"num_classes must be in [1, 200], got {num_classes}")
+        self.num_classes = num_classes
         imagenet_mean = [0.485, 0.456, 0.406]
         imagenet_std = [0.229, 0.224, 0.225]
 
@@ -145,6 +148,13 @@ class IncrementalTinyImageNet:
                                                                         ])
                                             )
         
+        # Optional: subset to first ``num_classes`` classes
+        if num_classes < 200:
+            for attr in ("train_set", "val_set", "test_set"):
+                ds = getattr(self, attr)
+                keep = [i for i, t in enumerate(ds.targets) if t < num_classes]
+                setattr(self, attr, torch.utils.data.Subset(ds, keep))
+
         # Precompute class indices for fast lookup using ImageFolder.targets
         self._class_indices = {"train": {}, "test": {}, "val": {}}
         self._precompute_class_indices()
@@ -154,9 +164,13 @@ class IncrementalTinyImageNet:
     def _precompute_class_indices(self):
         """Use ImageFolder.targets for fast vectorized indexing."""
         for mode, dataset in [("train", self.train_set), ("test", self.test_set), ("val", self.val_set)]:
-            targets = torch.tensor(dataset.targets, dtype=torch.long)
+            if hasattr(dataset, "targets"):
+                targets = torch.tensor(dataset.targets, dtype=torch.long)
+            else:
+                base_targets = dataset.dataset.targets
+                targets = torch.tensor([base_targets[i] for i in dataset.indices], dtype=torch.long)
             class_to_indices = {}
-            for lbl in range(200):  # TinyImageNet has 200 classes
+            for lbl in range(self.num_classes):
                 mask = (targets == lbl)
                 if mask.any():
                     class_to_indices[lbl] = mask.nonzero(as_tuple=True)[0]
@@ -496,7 +510,10 @@ def build_dataset(name: str, **kwargs):
     if name == "fashion_mnist":
         return IncrementalFashionMNIST(val_ratio=kwargs.get("val_ratio", 0.1))
     if name == "tiny_imagenet":
-        return IncrementalTinyImageNet(resize=kwargs.get("img_size", 64))
+        return IncrementalTinyImageNet(
+            resize=kwargs.get("img_size", 64),
+            num_classes=kwargs.get("num_classes", 200),
+        )
     if name == "cifar100":
         return IncrementalCIFAR100(
             num_classes=kwargs.get("num_classes", 100),
