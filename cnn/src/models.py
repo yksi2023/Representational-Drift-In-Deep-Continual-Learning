@@ -259,6 +259,67 @@ class ResNet18CIFAR_GN(nn.Module):
 
 
 # ---------------------------------------------------------------------------
+# Tiny ImageNet ResNet18, trained from scratch with Group Norm + Weight
+# Standardization + Zero-gamma residual init. Uses the standard ImageNet
+# stem (7x7 conv stride-2 + maxpool) so it works with both 64x64 and
+# 224x224 inputs.
+# ---------------------------------------------------------------------------
+
+
+class ResNet18TinyImageNet_GN(nn.Module):
+    """ResNet-18 with ImageNet stem (7x7 stride-2 + maxpool) + GN + WS.
+
+    Designed for Tiny ImageNet (64x64 or 224x224 inputs).
+    Feature stages mirror torchvision naming (``layer1..layer4``) so drift
+    probe specs transfer cleanly between this and other ResNet variants.
+    """
+    def __init__(self, num_classes: int = 200):
+        super().__init__()
+        self.stem = nn.Sequential(
+            StdConv2d(3, 64, kernel_size=7, stride=2, padding=3, bias=False),
+            _gn(64),
+            nn.ReLU(inplace=True),
+            nn.MaxPool2d(kernel_size=3, stride=2, padding=1),
+        )
+        self.layer1 = nn.Sequential(BasicBlockGN(64, 64),          BasicBlockGN(64, 64))
+        self.layer2 = nn.Sequential(BasicBlockGN(64, 128, 2),      BasicBlockGN(128, 128))
+        self.layer3 = nn.Sequential(BasicBlockGN(128, 256, 2),     BasicBlockGN(256, 256))
+        self.layer4 = nn.Sequential(BasicBlockGN(256, 512, 2),     BasicBlockGN(512, 512))
+        self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
+        self.fc = nn.Linear(512, num_classes)
+
+        self._init_weights()
+        self._zero_init_last_gn()
+
+    def _init_weights(self):
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                nn.init.kaiming_normal_(m.weight, mode="fan_out", nonlinearity="relu")
+            elif isinstance(m, nn.GroupNorm):
+                nn.init.ones_(m.weight)
+                nn.init.zeros_(m.bias)
+            elif isinstance(m, nn.Linear):
+                nn.init.normal_(m.weight, 0, 0.01)
+                nn.init.zeros_(m.bias)
+
+    def _zero_init_last_gn(self):
+        """Zero-init gn2 gamma so each residual block starts as identity."""
+        for m in self.modules():
+            if isinstance(m, BasicBlockGN):
+                nn.init.zeros_(m.gn2.weight)
+
+    def forward(self, x):
+        x = self.stem(x)
+        x = self.layer1(x)
+        x = self.layer2(x)
+        x = self.layer3(x)
+        x = self.layer4(x)
+        x = self.avgpool(x)
+        x = torch.flatten(x, 1)
+        return self.fc(x)
+
+
+# ---------------------------------------------------------------------------
 # BiT-S ResNetV2-50x1 (GN + WS), pretrained on ImageNet-1k ONLY (ILSVRC-2012).
 # Uses Google's official BiT-S release; no ImageNet-21k data ever seen.
 # ---------------------------------------------------------------------------
@@ -356,14 +417,14 @@ class BiTResNet50_IN1k(nn.Module):
 
 
 MODEL_DEFAULTS = {
-    "fashion_mnist":    {"model": "mlp",                "num_classes": 10,  "img_size": 28},
-    "tiny_imagenet":    {"model": "resnet18_pretrained","num_classes": 200, "img_size": 224},
-    "cifar100":         {"model": "resnet18_cifar_gn",  "num_classes": 100, "img_size": 32},
-    "imagenet21k_p200": {"model": "bit_s_r50x1_in1k",   "num_classes": 200, "img_size": 224},
+    "fashion_mnist":    {"model": "mlp",                      "num_classes": 10,  "img_size": 28},
+    "tiny_imagenet":    {"model": "resnet18_pretrained",      "num_classes": 200, "img_size": 224},
+    "cifar100":         {"model": "resnet18_cifar_gn",        "num_classes": 100, "img_size": 32},
+    "imagenet21k_p200": {"model": "bit_s_r50x1_in1k",         "num_classes": 200, "img_size": 224},
 }
 
 MODEL_CHOICES = ("mlp", "resnet18_tiny", "resnet18_pretrained",
-                 "resnet18_cifar_gn", "bit_s_r50x1_in1k")
+                 "resnet18_cifar_gn", "resnet18_tiny_gn", "bit_s_r50x1_in1k")
 
 
 def build_model(name: str, num_classes: int, **kwargs) -> nn.Module:
@@ -382,6 +443,8 @@ def build_model(name: str, num_classes: int, **kwargs) -> nn.Module:
         )
     if name == "resnet18_cifar_gn":
         return ResNet18CIFAR_GN(num_classes=num_classes)
+    if name == "resnet18_tiny_gn":
+        return ResNet18TinyImageNet_GN(num_classes=num_classes)
     if name == "bit_s_r50x1_in1k":
         return BiTResNet50_IN1k(
             num_classes=num_classes,

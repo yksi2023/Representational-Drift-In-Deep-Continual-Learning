@@ -34,11 +34,12 @@ def plot_cnn_performance(exp_dir: str, output_dir: Optional[str] = None) -> None
         perf = json.load(f)
 
     # Deterministic task ordering: task_0, task_1, ...
-    task_names = sorted(perf.keys(), key=lambda k: int(k.split("_")[1]))
-    num_stages = max(len(perf[n]) for n in task_names)
+    raw_task_names = sorted(perf.keys(), key=lambda k: int(k.split("_")[1]))
+    task_names = [f"T{i + 1}" for i in range(len(raw_task_names))]
+    num_stages = max(len(perf[n]) for n in raw_task_names)
 
     acc_matrix = np.full((len(task_names), num_stages), np.nan)
-    for i, name in enumerate(task_names):
+    for i, name in enumerate(raw_task_names):
         for j, entry in enumerate(perf[name]):
             if entry is None:
                 continue
@@ -54,7 +55,7 @@ def plot_cnn_performance(exp_dir: str, output_dir: Optional[str] = None) -> None
     )
 
     # --- 2. First-task retention plot ---
-    _plot_first_task_retention(perf, task_names, output_dir)
+    _plot_first_task_retention(perf, task_names, raw_task_names, output_dir)
 
     print(f"  Performance plots saved to {output_dir}")
 
@@ -77,14 +78,15 @@ def _plot_matrix_heatmap(
     ax.set_yticklabels(row_labels)
 
     nrows, ncols = matrix.shape
-    if nrows <= 20 and ncols <= 20:
+    cell_fontsize = max(4, min(10, int(90 / max(nrows, ncols))))
+    if nrows <= 25 and ncols <= 25:
         for i in range(nrows):
             for j in range(ncols):
                 val = matrix[i, j]
                 if not np.isnan(val):
                     text = f"{val:.2f}" if val < 10 else f"{val:.1f}"
                     ax.text(j, i, text, ha="center", va="center",
-                            color="black", fontsize=10)
+                            color="black", fontsize=cell_fontsize)
 
     ax.set_xlabel("After Training on Task")
     ax.set_ylabel("Evaluated Task")
@@ -98,9 +100,10 @@ def _plot_matrix_heatmap(
 def _plot_first_task_retention(
     perf: Dict,
     task_names: List[str],
+    raw_task_names: List[str],
     output_dir: str,
 ) -> None:
-    first_task = task_names[0]
+    first_task = raw_task_names[0]
     entries = perf[first_task]
 
     accs, losses = [], []
@@ -119,7 +122,8 @@ def _plot_first_task_retention(
     ax1.set_xlabel("After Training on Task")
     ax1.set_ylabel("Accuracy")
     ax1.set_xticks(list(x))
-    ax1.set_xticklabels(task_names, rotation=45, ha="right")
+    display_names = [f"T{i + 1}" for i in range(len(task_names))]
+    ax1.set_xticklabels(display_names, rotation=45, ha="right")
     ax1.set_ylim(-0.05, 1.05)
     ax1.grid(True, linestyle="--", alpha=0.6)
 
@@ -127,7 +131,7 @@ def _plot_first_task_retention(
     ax2.set_xlabel("After Training on Task")
     ax2.set_ylabel("Loss")
     ax2.set_xticks(list(x))
-    ax2.set_xticklabels(task_names, rotation=45, ha="right")
+    ax2.set_xticklabels(display_names, rotation=45, ha="right")
     ax2.grid(True, linestyle="--", alpha=0.6)
 
     plt.tight_layout()

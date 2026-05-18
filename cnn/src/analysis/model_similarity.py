@@ -24,14 +24,16 @@ def plot_similarity_matrix(
 
     ax.set_xticks(range(len(task_indices)))
     ax.set_yticks(range(len(task_indices)))
-    ax.set_xticklabels([f"T{t}" for t in task_indices])
-    ax.set_yticklabels([f"T{t}" for t in task_indices])
+    tick_labels = [f"T{t + 1}" for t in range(len(task_indices))]
+    ax.set_xticklabels(tick_labels)
+    ax.set_yticklabels(tick_labels)
     plt.setp(ax.get_xticklabels(), rotation=45, ha="right", rotation_mode="anchor")
 
-    for i in range(len(task_indices)):
-        for j in range(len(task_indices)):
-            ax.text(j, i, f"{matrix_np[i, j]:.2f}",
-                    ha="center", va="center", color="black", fontsize=10)
+    if len(task_indices) <= 20:
+        for i in range(len(task_indices)):
+            for j in range(len(task_indices)):
+                ax.text(j, i, f"{matrix_np[i, j]:.2f}",
+                        ha="center", va="center", color="black", fontsize=10)
 
     ax.set_xlabel("Model after Task")
     ax.set_ylabel("Model after Task")

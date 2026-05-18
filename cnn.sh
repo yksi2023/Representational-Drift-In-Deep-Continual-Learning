@@ -28,8 +28,8 @@ COMMON=(
     --optimizer sgd
     --lr 0.2
     --patience 10
-    --amp
     --scheduler cosine
+    --seed 42
 )
 
 cd "${WORK_DIR}"
