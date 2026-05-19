@@ -2,7 +2,7 @@
 
 Pipeline (as per prompt.md):
   1. Concatenate reps from all checkpoints: X_all = [X^(1); ...; X^(T)] shape (T*N, D)
-  2. Fit PCA on X_all, reduce to ``pca_dims`` (default 20).
+  2. Fit PCA on X_all, keeping enough components to explain ``pca_var_threshold`` (default 90%) of variance.
   3. Fit UMAP on PCA output, reduce to 2D.
   4. Split Z_umap back into T chunks of shape (N, 2).
   5. Visualize: either per-checkpoint subplots (color=class) or a single plot
@@ -28,7 +28,7 @@ def run_sample_umap(
     labels: torch.Tensor,
     layer_names: List[str],
     output_dir: str,
-    pca_dims: int = 20,
+    pca_var_threshold: float = 0.90,
     color_by: str = "class",
     show_trajectory: bool = False,
     trajectory_alpha: float = 0.05,
@@ -41,7 +41,8 @@ def run_sample_umap(
         labels: Tensor(N,) class labels for probe samples.
         layer_names: Which layers to visualize.
         output_dir: Directory to save output PDFs.
-        pca_dims: Number of PCA dimensions before UMAP (0 to skip PCA).
+        pca_var_threshold: Keep enough PCA components to explain this fraction of
+            variance (0, 1]. Set to 0 to skip PCA entirely.
         color_by: "class" → subplots per checkpoint, color=class;
                   "checkpoint" → single plot, color=checkpoint index.
         show_trajectory: Draw lines connecting the same sample across checkpoints.
@@ -71,15 +72,17 @@ def run_sample_umap(
         N = reps_list[0].shape[0]
         X_all = np.concatenate(reps_list, axis=0)  # (T*N, D)
 
-        # --- 2. PCA ---
+        # --- 2. PCA (variance-threshold) ---
         pca_var_explained: Optional[float] = None
-        if pca_dims > 0 and pca_dims < X_all.shape[1]:
+        pca_n_components: Optional[int] = None
+        if pca_var_threshold > 0:
             from sklearn.decomposition import PCA
-            print(f"    PCA: {X_all.shape[1]} → {pca_dims} dims...")
-            pca = PCA(n_components=pca_dims, random_state=42)
-            X_pca = pca.fit_transform(X_all)  # (T*N, pca_dims)
+            print(f"    PCA: {X_all.shape[1]}D → {pca_var_threshold*100:.0f}% var threshold...")
+            pca = PCA(n_components=pca_var_threshold, svd_solver="full", random_state=42)
+            X_pca = pca.fit_transform(X_all)  # (T*N, k)
+            pca_n_components = int(pca.n_components_)
             pca_var_explained = float(pca.explained_variance_ratio_.sum())
-            print(f"    PCA explained variance: {pca_var_explained * 100:.1f}%")
+            print(f"    PCA kept {pca_n_components} components, explained {pca_var_explained * 100:.1f}%")
         else:
             X_pca = X_all
 
@@ -98,23 +101,23 @@ def run_sample_umap(
             _plot_by_checkpoint(
                 Z_list, sorted_task_indices, safe_layer, umap_dir,
                 show_trajectory, trajectory_alpha, trajectory_subsample,
-                pca_dims=pca_dims, pca_var_explained=pca_var_explained,
+                pca_n_components=pca_n_components, pca_var_explained=pca_var_explained,
             )
         else:
             _plot_by_class(
                 Z_list, labels_np, sorted_task_indices, safe_layer, umap_dir,
                 show_trajectory, trajectory_alpha, trajectory_subsample,
-                pca_dims=pca_dims, pca_var_explained=pca_var_explained,
+                pca_n_components=pca_n_components, pca_var_explained=pca_var_explained,
             )
 
     print(f"  [sample_umap] Results saved to {umap_dir}")
 
 
-def _pca_subtitle(pca_dims: int, pca_var_explained: Optional[float]) -> str:
+def _pca_subtitle(pca_n_components: Optional[int], pca_var_explained: Optional[float]) -> str:
     """Build a subtitle string describing PCA compression."""
-    if pca_var_explained is None:
+    if pca_n_components is None or pca_var_explained is None:
         return ""
-    return f"PCA {pca_dims}D: {pca_var_explained * 100:.1f}% var explained"
+    return f"PCA {pca_n_components}D: {pca_var_explained * 100:.1f}% var explained"
 
 
 def _plot_by_class(
@@ -126,7 +129,7 @@ def _plot_by_class(
     show_trajectory: bool,
     traj_alpha: float,
     traj_subsample: int,
-    pca_dims: int = 20,
+    pca_n_components: Optional[int] = None,
     pca_var_explained: Optional[float] = None,
 ) -> None:
     """One subplot per checkpoint, color = class label."""
@@ -167,12 +170,31 @@ def _plot_by_class(
     if show_trajectory:
         _draw_trajectories(axes_flat[:T], Z_list, traj_alpha, traj_subsample)
 
-    subtitle = _pca_subtitle(pca_dims, pca_var_explained)
+    # Class legend (proxy patches)
+    from matplotlib.patches import Patch
+    unique_classes = np.unique(labels_np)
+    n_classes = len(unique_classes)
+    cmap_leg = cm.get_cmap("tab20" if n_classes <= 20 else "hsv", n_classes)
+    legend_handles = [
+        Patch(color=cmap_leg(i), label=f"Class {int(c)}")
+        for i, c in enumerate(unique_classes)
+    ]
+    fig.legend(
+        handles=legend_handles,
+        loc="center right",
+        fontsize=8,
+        framealpha=0.8,
+        ncol=1,
+        title="Class",
+        title_fontsize=9,
+    )
+
+    subtitle = _pca_subtitle(pca_n_components, pca_var_explained)
     if subtitle:
         fig.text(0.5, 0.01, subtitle, ha="center", va="bottom", fontsize=10,
                  color="gray")
 
-    plt.tight_layout(rect=[0, 0.03, 1, 1])
+    plt.tight_layout(rect=[0, 0.03, 0.88, 1])
     out_path = os.path.join(umap_dir, f"umap_by_class_{safe_layer}.pdf")
     plt.savefig(out_path)
     plt.close()
@@ -187,7 +209,7 @@ def _plot_by_checkpoint(
     show_trajectory: bool,
     traj_alpha: float,
     traj_subsample: int,
-    pca_dims: int = 20,
+    pca_n_components: Optional[int] = None,
     pca_var_explained: Optional[float] = None,
 ) -> None:
     """Single plot, color = checkpoint index."""
@@ -207,9 +229,12 @@ def _plot_by_checkpoint(
     if show_trajectory:
         _draw_trajectories([ax] * T, Z_list, traj_alpha, traj_subsample)
 
-    subtitle = _pca_subtitle(pca_dims, pca_var_explained)
+    ax.legend(loc="upper right", fontsize=7, framealpha=0.8,
+              markerscale=2, title="Checkpoint", title_fontsize=8)
+
+    subtitle = _pca_subtitle(pca_n_components, pca_var_explained)
     if subtitle:
-        ax.annotate(subtitle, xy=(0.5, -0.08), xycoords="axes fraction",
+        ax.annotate(subtitle, xy=(0.5, -0.06), xycoords="axes fraction",
                     ha="center", va="top", fontsize=10, color="gray")
 
     plt.tight_layout()

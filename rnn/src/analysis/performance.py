@@ -10,6 +10,8 @@ from typing import Dict, List, Optional
 import numpy as np
 import matplotlib.pyplot as plt
 
+from src.analysis._plot_utils import t_labels
+
 
 def plot_rnn_performance(exp_dir: str, output_dir: str) -> None:
     """
@@ -46,8 +48,9 @@ def plot_rnn_performance(exp_dir: str, output_dir: str) -> None:
             acc_matrix[i, j] = acc_val if acc_val is not None else np.nan
 
     # --- 1. Accuracy heatmap ---
+    tick_labels = t_labels(task_names)
     _plot_matrix_heatmap(
-        acc_matrix, task_names, task_names,
+        acc_matrix, tick_labels, tick_labels,
         output_path=os.path.join(output_dir, "accuracy_matrix.pdf"),
         vmin=0, vmax=1, cmap='viridis',
     )
@@ -113,7 +116,7 @@ def _plot_first_task_retention(
     ax1.set_xlabel("After Training on Task")
     ax1.set_ylabel("Accuracy")
     ax1.set_xticks(list(x))
-    ax1.set_xticklabels(task_names, rotation=45, ha='right')
+    ax1.set_xticklabels(t_labels(task_names), rotation=45, ha='right')
     ax1.set_ylim(-0.05, 1.05)
     ax1.grid(True, linestyle='--', alpha=0.6)
 
@@ -121,7 +124,7 @@ def _plot_first_task_retention(
     ax2.set_xlabel("After Training on Task")
     ax2.set_ylabel("Loss")
     ax2.set_xticks(list(x))
-    ax2.set_xticklabels(task_names, rotation=45, ha='right')
+    ax2.set_xticklabels(t_labels(task_names), rotation=45, ha='right')
     ax2.grid(True, linestyle='--', alpha=0.6)
 
     plt.tight_layout()

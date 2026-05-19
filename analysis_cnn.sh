@@ -53,11 +53,13 @@ fi
 default_layers_for() {
     case "$1" in
         resnet18_pretrained)
-            echo "backbone.layer3.0.relu,backbone.layer3.1.relu,backbone.layer4.0.relu,backbone.layer4.1.relu" ;;
+            echo "backbone.maxpool,backbone.layer1,backbone.layer2,backbone.layer3,backbone.layer4" ;;
         resnet18_tiny)
-            echo "conv_layer.4,conv_layer.5,conv_layer.6,conv_layer.7" ;;
+            echo "stem,layer1,layer2,layer3,layer4" ;;
         resnet18_cifar_gn)
-            echo "layer2.1.relu2,layer3.0.relu2,layer3.1.relu2,layer4.0.relu2,layer4.1.relu2" ;;
+            echo "stem,layer1,layer2,layer3,layer4" ;;
+        resnet18_tiny_gn)
+            echo "stem,layer1,layer2,layer3,layer4" ;;
         bit_s_r50x1_in1k)
             echo "backbone.stages.0,backbone.stages.1,backbone.stages.2,backbone.stages.3,backbone.norm" ;;
         *)

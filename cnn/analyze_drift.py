@@ -60,8 +60,8 @@ def parse_args():
     parser.add_argument("--umap_color_by", type=str, default="class",
                         choices=["class", "checkpoint"],
                         help="Color UMAP points by class label or checkpoint index")
-    parser.add_argument("--umap_pca_dims", type=int, default=20,
-                        help="PCA dimensions before UMAP (0 to skip PCA)")
+    parser.add_argument("--umap_pca_var", type=float, default=0.90,
+                        help="Keep PCA components explaining this fraction of variance before UMAP (0 to skip PCA)")
     parser.add_argument("--umap_trajectory", action="store_true",
                         help="Draw trajectory lines connecting same sample across checkpoints")
     return parser.parse_args()
@@ -205,7 +205,7 @@ def main():
             labels=labels,
             layer_names=layer_names,
             output_dir=args.output_dir,
-            pca_dims=args.umap_pca_dims,
+            pca_var_threshold=args.umap_pca_var,
             color_by=args.umap_color_by,
             show_trajectory=args.umap_trajectory,
         )

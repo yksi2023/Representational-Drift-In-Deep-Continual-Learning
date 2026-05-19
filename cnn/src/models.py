@@ -56,28 +56,24 @@ class ResNet18_Tiny(nn.Module):
     '''ResNet-18 architecture adapted for Tiny ImageNet classification.'''
     def __init__(self, num_classes=200):
         super(ResNet18_Tiny, self).__init__()
-        self.initial_layer = nn.Sequential(
+        self.stem = nn.Sequential(
             nn.Conv2d(3, 64, kernel_size=3, stride=1, padding=1, bias=False),
             nn.BatchNorm2d(64),
             nn.ReLU(inplace=True),
         )
-        self.conv_layer=nn.Sequential(
-            BasicBlock_Tiny(64, 64),
-            BasicBlock_Tiny(64, 64),
-            BasicBlock_Tiny(64, 128, stride=2),
-            BasicBlock_Tiny(128, 128),
-            BasicBlock_Tiny(128, 256, stride=2),
-            BasicBlock_Tiny(256, 256),
-            BasicBlock_Tiny(256, 512, stride=2),
-            BasicBlock_Tiny(512, 512),
-        )
+        self.layer1 = nn.Sequential(BasicBlock_Tiny(64, 64),           BasicBlock_Tiny(64, 64))
+        self.layer2 = nn.Sequential(BasicBlock_Tiny(64, 128, stride=2), BasicBlock_Tiny(128, 128))
+        self.layer3 = nn.Sequential(BasicBlock_Tiny(128, 256, stride=2),BasicBlock_Tiny(256, 256))
+        self.layer4 = nn.Sequential(BasicBlock_Tiny(256, 512, stride=2),BasicBlock_Tiny(512, 512))
         self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
         self.fc = nn.Linear(512, num_classes)
-        
 
     def forward(self, x):
-        x = self.initial_layer(x)
-        x = self.conv_layer(x)
+        x = self.stem(x)
+        x = self.layer1(x)
+        x = self.layer2(x)
+        x = self.layer3(x)
+        x = self.layer4(x)
         x = self.avgpool(x)
         x = torch.flatten(x, 1)
         x = self.fc(x)
@@ -421,6 +417,7 @@ MODEL_DEFAULTS = {
     "tiny_imagenet":    {"model": "resnet18_pretrained",      "num_classes": 200, "img_size": 224},
     "cifar100":         {"model": "resnet18_cifar_gn",        "num_classes": 100, "img_size": 32},
     "imagenet21k_p200": {"model": "bit_s_r50x1_in1k",         "num_classes": 200, "img_size": 224},
+    "imagenet1k":       {"model": "resnet18_tiny_gn",         "num_classes": 200, "img_size": 224},
 }
 
 MODEL_CHOICES = ("mlp", "resnet18_tiny", "resnet18_pretrained",

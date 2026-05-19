@@ -18,6 +18,8 @@ import torch
 import matplotlib.pyplot as plt
 from sklearn.decomposition import PCA
 
+from src.analysis._plot_utils import t_labels
+
 from src.analysis.baseline_drift import _load_reps_from_npz
 
 
@@ -139,8 +141,7 @@ def _plot_coding_fraction(
     ax.set_ylabel("Fraction of Drift Variance")
     ax.set_ylim(0, 1.05)
     ax.set_xticks(indices)
-    labels = task_names[:n] if len(task_names) >= n else [str(i) for i in indices]
-    ax.set_xticklabels(labels, rotation=45, ha="right")
+    ax.set_xticklabels(t_labels(task_names)[:n], rotation=45, ha="right")
     ax.legend(loc="upper right")
     ax.grid(True, axis="y", linestyle="--", alpha=0.5)
 
@@ -168,7 +169,7 @@ def _plot_drift_norms(
     ax.plot(indices[valid], null_norms[valid], marker="s", label="Null")
     ax.set_xlabel("Model after Task")
     ax.set_ylabel("Mean L2 Norm of Drift")
-    labels = task_names[:n] if len(task_names) >= n else [str(i) for i in range(n)]
+    labels = t_labels(task_names)[:n]
     ax.set_xticks(indices[valid])
     ax.set_xticklabels([labels[i] for i in indices[valid]], rotation=45, ha="right")
     ax.legend()
@@ -249,7 +250,7 @@ def _plot_dimensionality_over_checkpoints(
     """Plot coding dimensionality k and participation ratio across checkpoints."""
     n = len(ks)
     indices = np.arange(n)
-    labels = task_names[:n] if len(task_names) >= n else [str(i) for i in range(n)]
+    labels = t_labels(task_names)[:n]
 
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 6))
 

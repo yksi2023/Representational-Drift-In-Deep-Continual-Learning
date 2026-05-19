@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Train all CL methods for CNN on Tiny ImageNet (ResNet18 with GroupNorm, from scratch).
+# Train all CL methods for CNN on ImageNet-1K subset (ResNet18 GN, from scratch).
 # 5 classes per task × 20 tasks = 100 classes (first 100 of 200).
+# Dataset prep: python cnn/tools/process_imagenet.py
 # Results: cnn/experiments/exp<i>_cnn_<method>/
 # Timing:  cnn/experiments/exp<i>_cnn_timing.txt
 # Usage:   bash cnn.sh <i>
@@ -20,13 +21,13 @@ TIMING="${EXP_ROOT}/exp${IDX}_cnn_timing.txt"
 mkdir -p "${EXP_ROOT}"; : > "${TIMING}"
 
 COMMON=(
-    --dataset tiny_imagenet
+    --dataset imagenet1k
     --model resnet18_tiny_gn
     --num_classes 100
-    --img_size 64
+    --img_size 224
     --increment 5
-    --epochs 100
-    --batch_size 256
+    --epochs 60
+    --batch_size 128
     --optimizer sgd
     --lr 0.1
     --patience 10
