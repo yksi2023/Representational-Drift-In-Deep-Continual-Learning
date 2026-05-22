@@ -18,7 +18,7 @@ import torch
 import matplotlib.pyplot as plt
 from sklearn.decomposition import PCA
 
-from src.analysis._plot_utils import t_labels
+from src.analysis._plot_utils import t_labels, sparse_ticks
 
 from src.analysis.baseline_drift import _load_reps_from_npz
 
@@ -140,8 +140,9 @@ def _plot_coding_fraction(
     ax.set_xlabel("Model after Task")
     ax.set_ylabel("Fraction of Drift Variance")
     ax.set_ylim(0, 1.05)
-    ax.set_xticks(indices)
-    ax.set_xticklabels(t_labels(task_names)[:n], rotation=45, ha="right")
+    sp, sl = sparse_ticks(n)
+    ax.set_xticks(sp)
+    ax.set_xticklabels(sl)
     ax.legend(loc="upper right")
     ax.grid(True, axis="y", linestyle="--", alpha=0.5)
 
@@ -169,9 +170,11 @@ def _plot_drift_norms(
     ax.plot(indices[valid], null_norms[valid], marker="s", label="Null")
     ax.set_xlabel("Model after Task")
     ax.set_ylabel("Mean L2 Norm of Drift")
-    labels = t_labels(task_names)[:n]
-    ax.set_xticks(indices[valid])
-    ax.set_xticklabels([labels[i] for i in indices[valid]], rotation=45, ha="right")
+    sp, sl = sparse_ticks(n)
+    sp_valid = [p for p in sp if indices[valid][0] <= p <= indices[valid][-1]]
+    sl_valid = [sl[sp.index(p)] for p in sp_valid]
+    ax.set_xticks(sp_valid)
+    ax.set_xticklabels(sl_valid)
     ax.legend()
     ax.grid(True, linestyle="--", alpha=0.5)
 
@@ -250,7 +253,7 @@ def _plot_dimensionality_over_checkpoints(
     """Plot coding dimensionality k and participation ratio across checkpoints."""
     n = len(ks)
     indices = np.arange(n)
-    labels = t_labels(task_names)[:n]
+    sp, sl = sparse_ticks(n)
 
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 6))
 
@@ -258,16 +261,16 @@ def _plot_dimensionality_over_checkpoints(
     ax1.plot(indices, ks, marker='o', color='#1f77b4')
     ax1.set_xlabel("Model after Task")
     ax1.set_ylabel("k (number of PCs)")
-    ax1.set_xticks(indices)
-    ax1.set_xticklabels(labels, rotation=45, ha='right')
+    ax1.set_xticks(sp)
+    ax1.set_xticklabels(sl)
     ax1.grid(True, linestyle='--', alpha=0.5)
 
     # Right: participation ratio
     ax2.plot(indices, prs, marker='s', color='#ff7f0e')
     ax2.set_xlabel("Model after Task")
     ax2.set_ylabel("Participation Ratio")
-    ax2.set_xticks(indices)
-    ax2.set_xticklabels(labels, rotation=45, ha='right')
+    ax2.set_xticks(sp)
+    ax2.set_xticklabels(sl)
     ax2.grid(True, linestyle='--', alpha=0.5)
 
     plt.tight_layout()

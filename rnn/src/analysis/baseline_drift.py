@@ -13,7 +13,7 @@ import torch
 import matplotlib.pyplot as plt
 
 from src.drift_metrics import compute_metrics
-from src.analysis._plot_utils import t_labels
+from src.analysis._plot_utils import t_labels, sparse_ticks
 
 
 def _load_reps_from_npz(reps_dir: str, probe_task: str) -> Dict[int, np.ndarray]:
@@ -62,13 +62,12 @@ def plot_drift_results(results: List[Dict], task_names: List[str], output_dir: s
         ax2.legend()
         ax2.grid(True, linestyle='--', alpha=0.6)
 
-        # Use T1..TN labels; see _plot_utils.py for the full mapping
-        if task_names and len(task_names) == len(tasks_idx):
-            labels = t_labels(task_names)
-            ax1.set_xticks(tasks_idx)
-            ax1.set_xticklabels(labels, rotation=45, ha='right')
-            ax2.set_xticks(tasks_idx)
-            ax2.set_xticklabels(labels, rotation=45, ha='right')
+        # Sparse ticks: start, mid, end only — see _plot_utils.py for task mapping
+        sp, sl = sparse_ticks(len(tasks_idx))
+        ax1.set_xticks([tasks_idx[i] for i in sp])
+        ax1.set_xticklabels(sl)
+        ax2.set_xticks([tasks_idx[i] for i in sp])
+        ax2.set_xticklabels(sl)
 
         plt.tight_layout()
         output_path = os.path.join(output_dir, f"drift_plot_{probe_task}.pdf")

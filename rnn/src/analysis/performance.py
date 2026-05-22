@@ -10,7 +10,7 @@ from typing import Dict, List, Optional
 import numpy as np
 import matplotlib.pyplot as plt
 
-from src.analysis._plot_utils import t_labels
+from src.analysis._plot_utils import t_labels, sparse_ticks
 
 
 def plot_rnn_performance(exp_dir: str, output_dir: str) -> None:
@@ -48,9 +48,8 @@ def plot_rnn_performance(exp_dir: str, output_dir: str) -> None:
             acc_matrix[i, j] = acc_val if acc_val is not None else np.nan
 
     # --- 1. Accuracy heatmap ---
-    tick_labels = t_labels(task_names)
     _plot_matrix_heatmap(
-        acc_matrix, tick_labels, tick_labels,
+        acc_matrix, len(task_names), len(task_names),
         output_path=os.path.join(output_dir, "accuracy_matrix.pdf"),
         vmin=0, vmax=1, cmap='viridis',
     )
@@ -63,22 +62,24 @@ def plot_rnn_performance(exp_dir: str, output_dir: str) -> None:
 
 def _plot_matrix_heatmap(
     matrix: np.ndarray,
-    row_labels: List[str],
-    col_labels: List[str],
+    n_rows: int,
+    n_cols: int,
     output_path: str,
     vmin: Optional[float] = None,
     vmax: Optional[float] = None,
     cmap: str = 'viridis',
 ):
-    """Plot a matrix as a heatmap with row/col labels."""
+    """Plot a matrix as a heatmap with sparse row/col labels."""
     fig, ax = plt.subplots(figsize=(9, 7))
 
     im = ax.imshow(matrix, cmap=cmap, vmin=vmin, vmax=vmax, aspect='auto')
 
-    ax.set_xticks(range(len(col_labels)))
-    ax.set_yticks(range(len(row_labels)))
-    ax.set_xticklabels(col_labels, rotation=45, ha='right')
-    ax.set_yticklabels(row_labels)
+    sp_c, sl_c = sparse_ticks(n_cols)
+    sp_r, sl_r = sparse_ticks(n_rows)
+    ax.set_xticks(sp_c)
+    ax.set_xticklabels(sl_c)
+    ax.set_yticks(sp_r)
+    ax.set_yticklabels(sl_r)
 
     ax.set_xlabel("After Training on Task")
     ax.set_ylabel("Evaluated Task")
@@ -115,16 +116,17 @@ def _plot_first_task_retention(
     ax1.plot(list(x), accs, marker='o', markersize=5)
     ax1.set_xlabel("After Training on Task")
     ax1.set_ylabel("Accuracy")
-    ax1.set_xticks(list(x))
-    ax1.set_xticklabels(t_labels(task_names), rotation=45, ha='right')
+    sp, sl = sparse_ticks(len(accs))
+    ax1.set_xticks(sp)
+    ax1.set_xticklabels(sl)
     ax1.set_ylim(-0.05, 1.05)
     ax1.grid(True, linestyle='--', alpha=0.6)
 
     ax2.plot(list(x), losses, marker='o', markersize=5, color='red')
     ax2.set_xlabel("After Training on Task")
     ax2.set_ylabel("Loss")
-    ax2.set_xticks(list(x))
-    ax2.set_xticklabels(t_labels(task_names), rotation=45, ha='right')
+    ax2.set_xticks(sp)
+    ax2.set_xticklabels(sl)
     ax2.grid(True, linestyle='--', alpha=0.6)
 
     plt.tight_layout()

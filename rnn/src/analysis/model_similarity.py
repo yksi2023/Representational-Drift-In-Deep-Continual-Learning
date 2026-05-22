@@ -11,7 +11,7 @@ import numpy as np
 import torch
 import matplotlib.pyplot as plt
 
-from src.analysis._plot_utils import t_labels
+from src.analysis._plot_utils import t_labels, sparse_ticks
 
 from src.drift_metrics import (
     compute_pairwise_similarity_matrix,
@@ -33,12 +33,12 @@ def plot_similarity_matrix(
     matrix_np = sim_matrix.numpy()
     im = ax.imshow(matrix_np, cmap='viridis', vmin=0, vmax=1)
 
-    labels = t_labels(task_names)
-    ax.set_xticks(range(len(task_names)))
-    ax.set_yticks(range(len(task_names)))
-    ax.set_xticklabels(labels)
-    ax.set_yticklabels(labels)
-    plt.setp(ax.get_xticklabels(), rotation=45, ha="right", rotation_mode="anchor")
+    sp, sl = sparse_ticks(len(task_names))
+    ax.set_xticks(sp)
+    ax.set_yticks(sp)
+    ax.set_xticklabels(sl)
+    ax.set_yticklabels(sl)
+    plt.setp(ax.get_xticklabels(), ha="center")
 
     ax.set_xlabel('Model after Task')
     ax.set_ylabel('Model after Task')

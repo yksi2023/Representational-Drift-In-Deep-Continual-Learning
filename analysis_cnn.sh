@@ -53,13 +53,13 @@ fi
 default_layers_for() {
     case "$1" in
         resnet18_pretrained)
-            echo "backbone.maxpool,backbone.layer1,backbone.layer2,backbone.layer3,backbone.layer4" ;;
+            echo "backbone.layer1,backbone.layer2,backbone.layer3,backbone.layer4" ;;
         resnet18_tiny)
-            echo "stem,layer1,layer2,layer3,layer4" ;;
+            echo "layer1,layer2,layer3,layer4" ;;
         resnet18_cifar_gn)
-            echo "stem,layer1,layer2,layer3,layer4" ;;
+            echo "layer1,layer2,layer3,layer4" ;;
         resnet18_tiny_gn)
-            echo "stem,layer1,layer2,layer3,layer4" ;;
+            echo "layer1,layer2,layer3,layer4" ;;
         bit_s_r50x1_in1k)
             echo "backbone.stages.0,backbone.stages.1,backbone.stages.2,backbone.stages.3,backbone.norm" ;;
         *)

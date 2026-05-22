@@ -33,6 +33,7 @@ def run_sample_umap(
     show_trajectory: bool = False,
     trajectory_alpha: float = 0.05,
     trajectory_subsample: int = 50,
+    max_display_per_class: int = 50,
 ) -> None:
     """Run PCA → UMAP on concatenated checkpoint reps and save visualizations.
 
@@ -78,10 +79,17 @@ def run_sample_umap(
         if pca_var_threshold > 0:
             from sklearn.decomposition import PCA
             print(f"    PCA: {X_all.shape[1]}D → {pca_var_threshold*100:.0f}% var threshold...")
-            pca = PCA(n_components=pca_var_threshold, svd_solver="full", random_state=42)
-            X_pca = pca.fit_transform(X_all)  # (T*N, k)
-            pca_n_components = int(pca.n_components_)
-            pca_var_explained = float(pca.explained_variance_ratio_.sum())
+            # Use randomized SVD to avoid LAPACK 32-bit integer overflow on large
+            # feature maps (e.g. layer1 on 224x224: 200704D × 13000 rows > 2^31).
+            n_cap = min(512, X_all.shape[0] - 1, X_all.shape[1] - 1)
+            pca = PCA(n_components=n_cap, svd_solver="randomized", random_state=42)
+            pca.fit(X_all)
+            cumvar = np.cumsum(pca.explained_variance_ratio_)
+            k = int(np.searchsorted(cumvar, pca_var_threshold) + 1)
+            k = min(k, n_cap)
+            X_pca = pca.transform(X_all)[:, :k]
+            pca_n_components = k
+            pca_var_explained = float(cumvar[k - 1])
             print(f"    PCA kept {pca_n_components} components, explained {pca_var_explained * 100:.1f}%")
         else:
             X_pca = X_all
@@ -108,6 +116,7 @@ def run_sample_umap(
                 Z_list, labels_np, sorted_task_indices, safe_layer, umap_dir,
                 show_trajectory, trajectory_alpha, trajectory_subsample,
                 pca_n_components=pca_n_components, pca_var_explained=pca_var_explained,
+                max_display_per_class=max_display_per_class,
             )
 
     print(f"  [sample_umap] Results saved to {umap_dir}")
@@ -118,6 +127,18 @@ def _pca_subtitle(pca_n_components: Optional[int], pca_var_explained: Optional[f
     if pca_n_components is None or pca_var_explained is None:
         return ""
     return f"PCA {pca_n_components}D: {pca_var_explained * 100:.1f}% var explained"
+
+
+def _subsample_display_mask(
+    labels_np: np.ndarray, max_per_class: int, rng: np.random.Generator
+) -> np.ndarray:
+    """Return boolean mask keeping at most max_per_class samples per class."""
+    mask = np.zeros(len(labels_np), dtype=bool)
+    for cls in np.unique(labels_np):
+        idx = np.where(labels_np == cls)[0]
+        chosen = rng.choice(idx, size=min(max_per_class, len(idx)), replace=False)
+        mask[chosen] = True
+    return mask
 
 
 def _plot_by_class(
@@ -131,6 +152,7 @@ def _plot_by_class(
     traj_subsample: int,
     pca_n_components: Optional[int] = None,
     pca_var_explained: Optional[float] = None,
+    max_display_per_class: int = 50,
 ) -> None:
     """One subplot per checkpoint, color = class label."""
     T = len(Z_list)
@@ -139,7 +161,11 @@ def _plot_by_class(
     cmap = cm.get_cmap("tab20" if n_classes <= 20 else "hsv", n_classes)
     class_to_color = {int(c): cmap(i) for i, c in enumerate(unique_classes)}
 
-    # Unified axis limits
+    # Per-class display subsample mask (same indices across all checkpoints)
+    rng = np.random.default_rng(42)
+    display_mask = _subsample_display_mask(labels_np, max_display_per_class, rng)
+
+    # Unified axis limits (computed from full embedding, not just display subset)
     all_z = np.concatenate(Z_list, axis=0)
     x_min, x_max = all_z[:, 0].min(), all_z[:, 0].max()
     y_min, y_max = all_z[:, 1].min(), all_z[:, 1].max()
@@ -152,8 +178,10 @@ def _plot_by_class(
     axes_flat = np.array(axes).flatten() if T > 1 else [axes]
 
     for ax_idx, (ax, z, t) in enumerate(zip(axes_flat, Z_list, task_indices)):
-        colors = [class_to_color[int(lb)] for lb in labels_np]
-        ax.scatter(z[:, 0], z[:, 1], c=colors, s=4, alpha=0.6, linewidths=0)
+        z_disp = z[display_mask]
+        labels_disp = labels_np[display_mask]
+        colors = [class_to_color[int(lb)] for lb in labels_disp]
+        ax.scatter(z_disp[:, 0], z_disp[:, 1], c=colors, s=12, alpha=0.7, linewidths=0)
         ax.set_xlim(x_min - pad_x, x_max + pad_x)
         ax.set_ylim(y_min - pad_y, y_max + pad_y)
         ax.set_xlabel("UMAP 1")
@@ -161,7 +189,7 @@ def _plot_by_class(
         ax.tick_params(left=False, bottom=False,
                        labelleft=False, labelbottom=False)
         ax.text(0.02, 0.97, f"T{ax_idx + 1}", transform=ax.transAxes,
-                va="top", ha="left", fontsize=10)
+                va="top", ha="left", fontsize=13, fontweight="bold")
 
     # Hide unused axes
     for ax in axes_flat[T:]:
@@ -182,16 +210,16 @@ def _plot_by_class(
     fig.legend(
         handles=legend_handles,
         loc="center right",
-        fontsize=8,
+        fontsize=12,
         framealpha=0.8,
         ncol=1,
         title="Class",
-        title_fontsize=9,
+        title_fontsize=13,
     )
 
     subtitle = _pca_subtitle(pca_n_components, pca_var_explained)
     if subtitle:
-        fig.text(0.5, 0.01, subtitle, ha="center", va="bottom", fontsize=10,
+        fig.text(0.5, 0.01, subtitle, ha="center", va="bottom", fontsize=12,
                  color="gray")
 
     plt.tight_layout(rect=[0, 0.03, 0.88, 1])
@@ -219,7 +247,7 @@ def _plot_by_checkpoint(
     fig, ax = plt.subplots(figsize=(7, 6))
     for i, (z, t) in enumerate(zip(Z_list, task_indices)):
         ax.scatter(z[:, 0], z[:, 1], c=[cmap(i)] * len(z),
-                   s=4, alpha=0.5, linewidths=0, label=f"T{i + 1}")
+                   s=12, alpha=0.5, linewidths=0, label=f"T{i + 1}")
 
     ax.set_xlabel("UMAP 1")
     ax.set_ylabel("UMAP 2")
@@ -229,13 +257,13 @@ def _plot_by_checkpoint(
     if show_trajectory:
         _draw_trajectories([ax] * T, Z_list, traj_alpha, traj_subsample)
 
-    ax.legend(loc="upper right", fontsize=7, framealpha=0.8,
-              markerscale=2, title="Checkpoint", title_fontsize=8)
+    ax.legend(loc="upper right", fontsize=12, framealpha=0.8,
+              markerscale=2, title="Checkpoint", title_fontsize=13)
 
     subtitle = _pca_subtitle(pca_n_components, pca_var_explained)
     if subtitle:
         ax.annotate(subtitle, xy=(0.5, -0.06), xycoords="axes fraction",
-                    ha="center", va="top", fontsize=10, color="gray")
+                    ha="center", va="top", fontsize=12, color="gray")
 
     plt.tight_layout()
     out_path = os.path.join(umap_dir, f"umap_by_checkpoint_{safe_layer}.pdf")

@@ -13,6 +13,8 @@ from typing import Dict, List, Optional
 import numpy as np
 import matplotlib.pyplot as plt
 
+from src.analysis._plot_utils import sparse_ticks
+
 
 def plot_cnn_performance(exp_dir: str, output_dir: Optional[str] = None) -> None:
     """
@@ -35,7 +37,7 @@ def plot_cnn_performance(exp_dir: str, output_dir: Optional[str] = None) -> None
 
     # Deterministic task ordering: task_0, task_1, ...
     raw_task_names = sorted(perf.keys(), key=lambda k: int(k.split("_")[1]))
-    task_names = [f"T{i + 1}" for i in range(len(raw_task_names))]
+    task_names = [str(i + 1) for i in range(len(raw_task_names))]
     num_stages = max(len(perf[n]) for n in raw_task_names)
 
     acc_matrix = np.full((len(task_names), num_stages), np.nan)
@@ -72,10 +74,12 @@ def _plot_matrix_heatmap(
     fig, ax = plt.subplots(figsize=(9, 7))
     im = ax.imshow(matrix, cmap=cmap, vmin=vmin, vmax=vmax, aspect="auto")
 
-    ax.set_xticks(range(len(col_labels)))
-    ax.set_yticks(range(len(row_labels)))
-    ax.set_xticklabels(col_labels, rotation=45, ha="right")
-    ax.set_yticklabels(row_labels)
+    sp, sl = sparse_ticks(len(col_labels))
+    ax.set_xticks(sp)
+    ax.set_xticklabels(sl)
+    sp2, sl2 = sparse_ticks(len(row_labels))
+    ax.set_yticks(sp2)
+    ax.set_yticklabels(sl2)
 
     ax.set_xlabel("After Training on Task")
     ax.set_ylabel("Evaluated Task")
@@ -110,17 +114,17 @@ def _plot_first_task_retention(
     ax1.plot(list(x), accs, marker="o", markersize=5)
     ax1.set_xlabel("After Training on Task")
     ax1.set_ylabel("Accuracy")
-    ax1.set_xticks(list(x))
-    display_names = [f"T{i + 1}" for i in range(len(task_names))]
-    ax1.set_xticklabels(display_names, rotation=45, ha="right")
+    sp, sl = sparse_ticks(len(accs))
+    ax1.set_xticks(sp)
+    ax1.set_xticklabels(sl)
     ax1.set_ylim(-0.05, 1.05)
     ax1.grid(True, linestyle="--", alpha=0.6)
 
     ax2.plot(list(x), losses, marker="o", markersize=5, color="red")
     ax2.set_xlabel("After Training on Task")
     ax2.set_ylabel("Loss")
-    ax2.set_xticks(list(x))
-    ax2.set_xticklabels(display_names, rotation=45, ha="right")
+    ax2.set_xticks(sp)
+    ax2.set_xticklabels(sl)
     ax2.grid(True, linestyle="--", alpha=0.6)
 
     plt.tight_layout()

@@ -20,10 +20,10 @@ Outputs per layer:
 import json
 import os
 from typing import Dict, List, Tuple
-
-import matplotlib.pyplot as plt
 import numpy as np
+import matplotlib.pyplot as plt
 import torch
+from src.analysis._plot_utils import sparse_ticks
 
 
 # ---------------------------------------------------------------------------
@@ -184,8 +184,9 @@ def _plot_coding_fraction(fracs, task_indices, layer, k, threshold, path):
     ax.set_xlabel("Model after Task")
     ax.set_ylabel("Fraction of Drift Variance")
     ax.set_ylim(0, 1.05)
-    ax.set_xticks(indices)
-    ax.set_xticklabels([f"T{t}" for t in task_indices], rotation=45, ha="right")
+    sp, sl = sparse_ticks(n)
+    ax.set_xticks(sp)
+    ax.set_xticklabels(sl)
     ax.legend(loc="upper right")
     ax.grid(True, axis="y", linestyle="--", alpha=0.5)
     plt.tight_layout()
@@ -203,9 +204,11 @@ def _plot_drift_norms(coding_norms, null_norms, task_indices, layer, k, path):
     ax.plot(indices[valid], null_norms[valid], marker="s", label="Null")
     ax.set_xlabel("Model after Task")
     ax.set_ylabel("Mean L2 Norm of Drift")
-    ax.set_xticks(indices[valid])
-    ax.set_xticklabels([f"T{task_indices[i]}" for i in indices[valid]],
-                       rotation=45, ha="right")
+    sp, sl = sparse_ticks(n)
+    sp_valid = [p for p in sp if p in indices[valid]]
+    sl_valid = [sl[sp.index(p)] for p in sp_valid]
+    ax.set_xticks(sp_valid)
+    ax.set_xticklabels(sl_valid)
     ax.legend()
     ax.grid(True, linestyle="--", alpha=0.5)
     plt.tight_layout()
@@ -237,22 +240,22 @@ def _plot_variance_explained(evr, k, layer, path):
 def _plot_dimensionality(ks, prs, task_indices, layer, threshold, path):
     n = len(ks)
     indices = np.arange(n)
-    labels = [f"T{t}" for t in task_indices]
+    sp, sl = sparse_ticks(n)
 
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 6))
 
     ax1.plot(indices, ks, marker="o", color="#1f77b4")
     ax1.set_xlabel("Model after Task")
     ax1.set_ylabel("k (number of PCs)")
-    ax1.set_xticks(indices)
-    ax1.set_xticklabels(labels, rotation=45, ha="right")
+    ax1.set_xticks(sp)
+    ax1.set_xticklabels(sl)
     ax1.grid(True, linestyle="--", alpha=0.5)
 
     ax2.plot(indices, prs, marker="s", color="#ff7f0e")
     ax2.set_xlabel("Model after Task")
     ax2.set_ylabel("Participation Ratio")
-    ax2.set_xticks(indices)
-    ax2.set_xticklabels(labels, rotation=45, ha="right")
+    ax2.set_xticks(sp)
+    ax2.set_xticklabels(sl)
     ax2.grid(True, linestyle="--", alpha=0.5)
 
     plt.tight_layout()

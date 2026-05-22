@@ -19,7 +19,7 @@ import torch.nn.functional as F
 import matplotlib.pyplot as plt
 
 from src.analysis.baseline_drift import _load_reps_from_npz
-from src.analysis._plot_utils import t_labels
+from src.analysis._plot_utils import t_labels, sparse_ticks
 
 
 def _reshape_to_3d(flat: np.ndarray, hidden_size: int) -> torch.Tensor:
@@ -78,13 +78,13 @@ def _plot_full_matrix(
         ax.axhline(y=pos, color='white', linewidth=0.5, alpha=0.7)
         ax.axvline(x=pos, color='white', linewidth=0.5, alpha=0.7)
 
-    # Label each checkpoint block at its centre; T1..TN — see _plot_utils.py
-    centres = [(k * seq_len + seq_len / 2) for k in range(n_checkpoints)]
-    labels = t_labels(task_names)[:n_checkpoints]
-    ax.set_xticks(centres)
-    ax.set_xticklabels(labels, rotation=45, ha='right')
-    ax.set_yticks(centres)
-    ax.set_yticklabels(labels)
+    # Sparse labels (start, mid, end) at block centres; see _plot_utils.py
+    sp, sl = sparse_ticks(n_checkpoints)
+    sparse_centres = [(k * seq_len + seq_len / 2) for k in sp]
+    ax.set_xticks(sparse_centres)
+    ax.set_xticklabels(sl, ha='center')
+    ax.set_yticks(sparse_centres)
+    ax.set_yticklabels(sl)
 
     ax.set_xlabel("Checkpoint / Time step")
     ax.set_ylabel("Checkpoint / Time step")

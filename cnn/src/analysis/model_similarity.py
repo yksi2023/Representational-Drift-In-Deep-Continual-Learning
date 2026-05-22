@@ -8,6 +8,7 @@ import torch
 import torch.nn.functional as F
 
 from src.analysis.drift_metrics import compute_pairwise_similarity_matrix
+from src.analysis._plot_utils import sparse_ticks
 
 
 def plot_similarity_matrix(
@@ -22,12 +23,12 @@ def plot_similarity_matrix(
     matrix_np = sim_matrix.numpy()
     im = ax.imshow(matrix_np, cmap="viridis", vmin=0, vmax=1)
 
-    ax.set_xticks(range(len(task_indices)))
-    ax.set_yticks(range(len(task_indices)))
-    tick_labels = [f"T{t + 1}" for t in range(len(task_indices))]
-    ax.set_xticklabels(tick_labels)
-    ax.set_yticklabels(tick_labels)
-    plt.setp(ax.get_xticklabels(), rotation=45, ha="right", rotation_mode="anchor")
+    sp, sl = sparse_ticks(len(task_indices))
+    ax.set_xticks(sp)
+    ax.set_xticklabels(sl)
+    ax.set_yticks(sp)
+    ax.set_yticklabels(sl)
+    plt.setp(ax.get_xticklabels(), ha="center")
 
     ax.set_xlabel("Model after Task")
     ax.set_ylabel("Model after Task")
