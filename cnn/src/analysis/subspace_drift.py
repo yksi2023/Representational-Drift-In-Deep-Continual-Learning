@@ -23,7 +23,7 @@ from typing import Dict, List, Tuple
 import numpy as np
 import matplotlib.pyplot as plt
 import torch
-from src.analysis._plot_utils import sparse_ticks
+from src.analysis._plot_utils import apply_paper_axis_style, sparse_ticks
 
 
 # ---------------------------------------------------------------------------
@@ -187,7 +187,7 @@ def _plot_coding_fraction(fracs, task_indices, layer, k, threshold, path):
     sp, sl = sparse_ticks(n)
     ax.set_xticks(sp)
     ax.set_xticklabels(sl)
-    ax.legend(loc="upper right")
+    apply_paper_axis_style(ax, legend=True, legend_kwargs={"loc": "upper right"})
     ax.grid(True, axis="y", linestyle="--", alpha=0.5)
     plt.tight_layout()
     plt.savefig(path)
@@ -209,7 +209,7 @@ def _plot_drift_norms(coding_norms, null_norms, task_indices, layer, k, path):
     sl_valid = [sl[sp.index(p)] for p in sp_valid]
     ax.set_xticks(sp_valid)
     ax.set_xticklabels(sl_valid)
-    ax.legend()
+    apply_paper_axis_style(ax, legend=True)
     ax.grid(True, linestyle="--", alpha=0.5)
     plt.tight_layout()
     plt.savefig(path)
@@ -230,7 +230,7 @@ def _plot_variance_explained(evr, k, layer, path):
     ax.set_xlabel("Number of Principal Components")
     ax.set_ylabel("Cumulative Variance Explained")
     ax.set_ylim(0, 1.05)
-    ax.legend()
+    apply_paper_axis_style(ax, legend=True)
     ax.grid(True, linestyle="--", alpha=0.5)
     plt.tight_layout()
     plt.savefig(path)
@@ -249,6 +249,7 @@ def _plot_dimensionality(ks, prs, task_indices, layer, threshold, path):
     ax1.set_ylabel("k (number of PCs)")
     ax1.set_xticks(sp)
     ax1.set_xticklabels(sl)
+    apply_paper_axis_style(ax1)
     ax1.grid(True, linestyle="--", alpha=0.5)
 
     ax2.plot(indices, prs, marker="s", color="#ff7f0e")
@@ -256,6 +257,7 @@ def _plot_dimensionality(ks, prs, task_indices, layer, threshold, path):
     ax2.set_ylabel("Participation Ratio")
     ax2.set_xticks(sp)
     ax2.set_xticklabels(sl)
+    apply_paper_axis_style(ax2)
     ax2.grid(True, linestyle="--", alpha=0.5)
 
     plt.tight_layout()

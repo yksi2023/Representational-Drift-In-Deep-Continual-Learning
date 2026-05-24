@@ -1,5 +1,12 @@
 """Shared plotting utilities for RNN drift analysis."""
-from typing import List
+from typing import Iterable, List
+
+
+AXIS_LABEL_SIZE = 30
+TICK_LABEL_SIZE = 26
+LEGEND_FONT_SIZE = 24
+LEGEND_TITLE_SIZE = 26
+TITLE_SIZE = 30
 
 # ---------------------------------------------------------------------------
 # Default 18-task sequence (DEFAULT_TASKS order in datasets.py).
@@ -41,3 +48,25 @@ def sparse_ticks(n: int):
         return list(range(n)), [str(i + 1) for i in range(n)]
     mid = (n - 1) // 2
     return [0, mid, n - 1], [str(1), str(mid + 1), str(n)]
+
+
+def sparse_value_ticks(values: Iterable[int]):
+    """Return sparse ticks for actual x values such as task gaps."""
+    vals = sorted(set(int(v) for v in values))
+    if len(vals) <= 3:
+        return vals, [str(v) for v in vals]
+    mid = (len(vals) - 1) // 2
+    ticks = [vals[0], vals[mid], vals[-1]]
+    return ticks, [str(v) for v in ticks]
+
+
+def apply_paper_axis_style(ax, legend: bool = False, legend_kwargs=None) -> None:
+    """Apply large paper-friendly axis and optional legend fonts."""
+    ax.xaxis.label.set_size(AXIS_LABEL_SIZE)
+    ax.yaxis.label.set_size(AXIS_LABEL_SIZE)
+    ax.tick_params(axis="both", labelsize=TICK_LABEL_SIZE)
+    if legend:
+        kwargs = {"fontsize": LEGEND_FONT_SIZE, "title_fontsize": LEGEND_TITLE_SIZE}
+        if legend_kwargs:
+            kwargs.update(legend_kwargs)
+        ax.legend(**kwargs)

@@ -19,6 +19,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 
+from src.analysis._plot_utils import apply_paper_axis_style, sparse_value_ticks
+
 
 def _pearson(a: torch.Tensor, b: torch.Tensor, dim: int) -> torch.Tensor:
     """Element-wise Pearson correlation along ``dim``."""
@@ -72,10 +74,12 @@ def _plot_all_layers(
     ax.set_xlabel("Task Gap")
     ax.set_ylabel("Pearson Correlation")
     ax.set_ylim(-0.1, 1.05)
-    ax.legend(loc="lower left")
+    apply_paper_axis_style(ax, legend=True, legend_kwargs={"loc": "lower left"})
     ax.grid(True, linestyle="--", alpha=0.6)
     if all_gaps:
-        ax.set_xticks(sorted(set(all_gaps)))
+        ticks, labels = sparse_value_ticks(all_gaps)
+        ax.set_xticks(ticks)
+        ax.set_xticklabels(labels)
 
     plt.tight_layout()
     plt.savefig(output_path)

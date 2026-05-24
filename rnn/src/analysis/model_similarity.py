@@ -11,7 +11,7 @@ import numpy as np
 import torch
 import matplotlib.pyplot as plt
 
-from src.analysis._plot_utils import t_labels, sparse_ticks
+from src.analysis._plot_utils import apply_paper_axis_style, sparse_ticks
 
 from src.drift_metrics import (
     compute_pairwise_similarity_matrix,
@@ -42,6 +42,7 @@ def plot_similarity_matrix(
 
     ax.set_xlabel('Model after Task')
     ax.set_ylabel('Model after Task')
+    apply_paper_axis_style(ax)
 
     plt.tight_layout()
     plt.savefig(output_path)

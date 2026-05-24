@@ -26,6 +26,14 @@ import torch
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
 
+from src.analysis._plot_utils import (
+    LEGEND_FONT_SIZE,
+    LEGEND_TITLE_SIZE,
+    TICK_LABEL_SIZE,
+    TITLE_SIZE,
+    apply_paper_axis_style,
+)
+
 from datasets import Trial, get_default_config
 from src.models import CognitiveRNN
 from src.checkpoints import load_model, list_checkpoints
@@ -416,8 +424,9 @@ def _plot_direction_umap(
         ax.set_xlabel("UMAP 1")
         ax.set_ylabel("UMAP 2")
         ax.tick_params(left=False, bottom=False, labelleft=False, labelbottom=False)
+        apply_paper_axis_style(ax)
         ax.text(0.02, 0.97, f"T{ax_idx + 1}", transform=ax.transAxes,
-                va="top", ha="left", fontsize=13, fontweight="bold")
+                va="top", ha="left", fontsize=TICK_LABEL_SIZE, fontweight="bold")
 
     # Hide unused axes
     for ax in axes_flat[T:]:
@@ -432,21 +441,110 @@ def _plot_direction_umap(
     fig.legend(
         handles=legend_handles,
         loc="center right",
-        fontsize=12,
+        fontsize=LEGEND_FONT_SIZE,
         framealpha=0.8,
         ncol=1,
         title="Direction",
-        title_fontsize=13,
+        title_fontsize=LEGEND_TITLE_SIZE,
     )
 
     subtitle = _pca_subtitle(pca_k, pca_var)
     if subtitle:
-        fig.text(0.5, 0.01, subtitle, ha="center", va="bottom", fontsize=12,
+        fig.text(0.5, 0.01, subtitle, ha="center", va="bottom", fontsize=TICK_LABEL_SIZE,
                  color="gray")
 
-    fig.suptitle(f"{probe_task} — {rep_name}", fontsize=14, fontweight="bold")
+    fig.suptitle(f"{probe_task} — {rep_name}", fontsize=TITLE_SIZE, fontweight="bold")
     plt.tight_layout(rect=[0, 0.03, 0.88, 0.96])
     out_path = os.path.join(umap_dir, f"umap_{rep_name}_{probe_task}.pdf")
+    plt.savefig(out_path)
+    plt.close()
+    print(f"    Saved {out_path}")
+
+
+def _plot_direction_umap_paper_subset(
+    Z_list: List[np.ndarray],
+    direction_labels: np.ndarray,
+    task_indices: List[int],
+    rep_name: str,
+    probe_task: str,
+    umap_dir: str,
+    checkpoint_numbers: List[int],
+    pca_k: Optional[int] = None,
+    pca_var: Optional[float] = None,
+    max_display_per_class: int = 40,
+) -> None:
+    """One-row paper figure for selected RNN checkpoints, color = direction."""
+    selected = []
+    for ckpt_num in checkpoint_numbers:
+        pos = ckpt_num - 1
+        if 0 <= pos < len(Z_list):
+            selected.append((pos, ckpt_num))
+
+    if len(selected) != len(checkpoint_numbers):
+        print(
+            f"    Skipping paper UMAP subset for {probe_task}/{rep_name}: "
+            f"requested {checkpoint_numbers}, only {len(Z_list)} checkpoints available"
+        )
+        return
+
+    unique_dirs = np.unique(direction_labels)
+    n_dirs = len(unique_dirs)
+    cmap = cm.get_cmap("tab10", max(n_dirs, 10))
+    dir_to_color = {int(d): cmap(i) for i, d in enumerate(unique_dirs)}
+    dir_angles = np.linspace(0, 360, n_dirs, endpoint=False).astype(int)
+    dir_to_label = {int(d): f"{dir_angles[i]}\u00b0" for i, d in enumerate(unique_dirs)}
+
+    rng = np.random.default_rng(42)
+    mask = np.zeros(len(direction_labels), dtype=bool)
+    for d in unique_dirs:
+        idx = np.where(direction_labels == d)[0]
+        chosen = rng.choice(idx, size=min(max_display_per_class, len(idx)), replace=False)
+        mask[chosen] = True
+
+    all_z = np.concatenate(Z_list, axis=0)
+    x_min, x_max = all_z[:, 0].min(), all_z[:, 0].max()
+    y_min, y_max = all_z[:, 1].min(), all_z[:, 1].max()
+    pad_x = (x_max - x_min) * 0.05
+    pad_y = (y_max - y_min) * 0.05
+
+    fig, axes = plt.subplots(1, 4, figsize=(16, 3.8))
+    for ax, (pos, label_num) in zip(axes, selected):
+        z_disp = Z_list[pos][mask]
+        labels_disp = direction_labels[mask]
+        colors = [dir_to_color[int(lb)] for lb in labels_disp]
+        ax.scatter(z_disp[:, 0], z_disp[:, 1], c=colors, s=12, alpha=0.75, linewidths=0)
+        ax.set_xlim(x_min - pad_x, x_max + pad_x)
+        ax.set_ylim(y_min - pad_y, y_max + pad_y)
+        ax.set_xlabel("UMAP 1")
+        ax.set_ylabel("UMAP 2")
+        ax.tick_params(left=False, bottom=False, labelleft=False, labelbottom=False)
+        apply_paper_axis_style(ax)
+        ax.text(0.03, 0.96, f"T{label_num}", transform=ax.transAxes,
+                va="top", ha="left", fontsize=TICK_LABEL_SIZE, fontweight="bold")
+
+    from matplotlib.patches import Patch
+    legend_handles = [
+        Patch(color=dir_to_color[int(d)], label=dir_to_label[int(d)])
+        for d in unique_dirs
+    ]
+    fig.legend(
+        handles=legend_handles,
+        loc="center right",
+        fontsize=LEGEND_FONT_SIZE,
+        framealpha=0.8,
+        ncol=1,
+        title="Direction",
+        title_fontsize=LEGEND_TITLE_SIZE,
+    )
+
+    subtitle = _pca_subtitle(pca_k, pca_var)
+    if subtitle:
+        fig.text(0.5, 0.01, subtitle, ha="center", va="bottom", fontsize=TICK_LABEL_SIZE,
+                 color="gray")
+
+    fig.suptitle(f"{probe_task} — {rep_name}", fontsize=TITLE_SIZE, fontweight="bold")
+    plt.tight_layout(rect=[0, 0.04, 0.88, 0.94])
+    out_path = os.path.join(umap_dir, f"umap_{rep_name}_{probe_task}_paper.pdf")
     plt.savefig(out_path)
     plt.close()
     print(f"    Saved {out_path}")
@@ -521,6 +619,12 @@ def run_sample_umap(
             _plot_direction_umap(
                 Z_list, direction_labels, task_indices,
                 rep_name, probe_task, umap_dir,
+                pca_k=pca_k, pca_var=pca_var,
+            )
+            _plot_direction_umap_paper_subset(
+                Z_list, direction_labels, task_indices,
+                rep_name, probe_task, umap_dir,
+                checkpoint_numbers=[1, 6, 12, 18],
                 pca_k=pca_k, pca_var=pca_var,
             )
 

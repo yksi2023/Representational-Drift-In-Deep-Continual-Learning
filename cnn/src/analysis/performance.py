@@ -13,7 +13,7 @@ from typing import Dict, List, Optional
 import numpy as np
 import matplotlib.pyplot as plt
 
-from src.analysis._plot_utils import sparse_ticks
+from src.analysis._plot_utils import apply_paper_axis_style, sparse_ticks
 
 
 def plot_cnn_performance(exp_dir: str, output_dir: Optional[str] = None) -> None:
@@ -83,6 +83,7 @@ def _plot_matrix_heatmap(
 
     ax.set_xlabel("After Training on Task")
     ax.set_ylabel("Evaluated Task")
+    apply_paper_axis_style(ax)
 
     plt.tight_layout()
     plt.savefig(output_path)
@@ -118,6 +119,7 @@ def _plot_first_task_retention(
     ax1.set_xticks(sp)
     ax1.set_xticklabels(sl)
     ax1.set_ylim(-0.05, 1.05)
+    apply_paper_axis_style(ax1)
     ax1.grid(True, linestyle="--", alpha=0.6)
 
     ax2.plot(list(x), losses, marker="o", markersize=5, color="red")
@@ -125,6 +127,7 @@ def _plot_first_task_retention(
     ax2.set_ylabel("Loss")
     ax2.set_xticks(sp)
     ax2.set_xticklabels(sl)
+    apply_paper_axis_style(ax2)
     ax2.grid(True, linestyle="--", alpha=0.6)
 
     plt.tight_layout()

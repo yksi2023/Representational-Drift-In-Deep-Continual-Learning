@@ -20,6 +20,8 @@ import torch
 import torch.nn.functional as F
 import matplotlib.pyplot as plt
 
+from src.analysis._plot_utils import apply_paper_axis_style, sparse_value_ticks
+
 from src.analysis.reference_drift import _load_reps_from_npz
 
 
@@ -139,10 +141,12 @@ def _plot_correlation_vs_gap(
     ax.set_xlabel("Task Gap")
     ax.set_ylabel("Pearson Correlation")
     ax.set_ylim(-0.1, 1.05)
-    ax.legend()
+    apply_paper_axis_style(ax, legend=True)
     ax.grid(True, linestyle='--', alpha=0.6)
     if results["STPV"][0]:
-        ax.set_xticks(results["STPV"][0])
+        ticks, labels = sparse_value_ticks(results["STPV"][0])
+        ax.set_xticks(ticks)
+        ax.set_xticklabels(labels)
 
     plt.tight_layout()
     plt.savefig(output_path)

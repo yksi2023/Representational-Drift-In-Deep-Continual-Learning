@@ -19,7 +19,7 @@ import torch.nn.functional as F
 import matplotlib.pyplot as plt
 
 from src.analysis.reference_drift import _load_reps_from_npz
-from src.analysis._plot_utils import t_labels, sparse_ticks
+from src.analysis._plot_utils import apply_paper_axis_style, sparse_ticks
 
 
 def _reshape_to_3d(flat: np.ndarray, hidden_size: int) -> torch.Tensor:
@@ -88,6 +88,7 @@ def _plot_full_matrix(
 
     ax.set_xlabel("Checkpoint / Time step")
     ax.set_ylabel("Checkpoint / Time step")
+    apply_paper_axis_style(ax)
 
     plt.tight_layout()
     plt.savefig(output_path)

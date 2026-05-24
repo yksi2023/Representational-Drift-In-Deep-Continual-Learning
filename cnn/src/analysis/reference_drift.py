@@ -13,6 +13,7 @@ import numpy as np
 import torch
 
 from src.analysis.drift_metrics import compute_metrics
+from src.analysis._plot_utils import apply_paper_axis_style, sparse_value_ticks
 
 
 def plot_drift_results(results: List[Dict], output_dir: str):
@@ -22,8 +23,7 @@ def plot_drift_results(results: List[Dict], output_dir: str):
 
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 6))
 
-    max_task = max(tasks) if tasks else 0
-    xticks = np.arange(0, max_task + 4, 4)
+    xticks, xticklabels = sparse_value_ticks(tasks)
 
     for layer in layers:
         layer_data = [r for r in results if r["layer"] == layer]
@@ -46,13 +46,15 @@ def plot_drift_results(results: List[Dict], output_dir: str):
     ax1.set_xlabel("Task Index")
     ax1.set_ylabel("Cosine Similarity")
     ax1.set_xticks(xticks)
-    ax1.legend()
+    ax1.set_xticklabels(xticklabels)
+    apply_paper_axis_style(ax1, legend=True)
     ax1.grid(True, linestyle="--", alpha=0.6)
 
     ax2.set_xlabel("Task Index")
     ax2.set_ylabel("L2 Distance")
     ax2.set_xticks(xticks)
-    ax2.legend()
+    ax2.set_xticklabels(xticklabels)
+    apply_paper_axis_style(ax2, legend=True)
     ax2.grid(True, linestyle="--", alpha=0.6)
 
     plt.tight_layout()
@@ -91,7 +93,7 @@ def plot_activation_distribution(
 
         ax.set_xlabel("Activation Value")
         ax.set_ylabel("Density")
-        ax.legend()
+        apply_paper_axis_style(ax, legend=True)
         ax.grid(True, alpha=0.3)
 
     plt.tight_layout()

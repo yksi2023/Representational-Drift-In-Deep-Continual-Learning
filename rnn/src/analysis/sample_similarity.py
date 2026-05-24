@@ -11,6 +11,7 @@ import torch
 import torch.nn.functional as F
 import matplotlib.pyplot as plt
 
+from src.analysis._plot_utils import apply_paper_axis_style
 from src.analysis.reference_drift import _load_reps_from_npz
 
 
@@ -47,6 +48,7 @@ def plot_sample_similarity_matrix(
 
     ax.set_xlabel('Sample Index')
     ax.set_ylabel('Sample Index')
+    apply_paper_axis_style(ax)
 
     plt.tight_layout()
     plt.savefig(output_path)

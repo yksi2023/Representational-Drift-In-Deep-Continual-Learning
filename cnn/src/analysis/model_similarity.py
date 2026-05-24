@@ -8,7 +8,7 @@ import torch
 import torch.nn.functional as F
 
 from src.analysis.drift_metrics import compute_pairwise_similarity_matrix
-from src.analysis._plot_utils import sparse_ticks
+from src.analysis._plot_utils import apply_paper_axis_style, sparse_ticks, sparse_value_ticks
 
 
 def plot_similarity_matrix(
@@ -32,6 +32,7 @@ def plot_similarity_matrix(
 
     ax.set_xlabel("Model after Task")
     ax.set_ylabel("Model after Task")
+    apply_paper_axis_style(ax)
     plt.tight_layout()
     plt.savefig(output_path)
     print(f"Similarity matrix saved to {output_path}")
@@ -80,8 +81,10 @@ def plot_similarity_decay_profile(
     ax.set_ylabel("Cosine Similarity")
     ax.set_ylim(0, 1)
     if all_gaps:
-        ax.set_xticks(sorted(set(all_gaps)))
-    ax.legend()
+        ticks, labels = sparse_value_ticks(all_gaps)
+        ax.set_xticks(ticks)
+        ax.set_xticklabels(labels)
+    apply_paper_axis_style(ax, legend=True)
     ax.grid(True, linestyle="--", alpha=0.6)
 
     plt.tight_layout()

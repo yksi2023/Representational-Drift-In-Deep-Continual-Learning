@@ -6,6 +6,8 @@ import matplotlib.pyplot as plt
 import torch
 import torch.nn.functional as F
 
+from src.analysis._plot_utils import apply_paper_axis_style
+
 
 def compute_sample_similarity_matrix(reps: torch.Tensor) -> torch.Tensor:
     """Pairwise cosine similarity matrix between samples, shape [N, N]."""
@@ -32,6 +34,7 @@ def plot_sample_similarity_matrix(
 
     ax.set_xlabel("Sample Index (sorted by class)")
     ax.set_ylabel("Sample Index (sorted by class)")
+    apply_paper_axis_style(ax)
     plt.tight_layout()
     plt.savefig(output_path)
     plt.close()

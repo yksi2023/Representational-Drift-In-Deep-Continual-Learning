@@ -22,6 +22,15 @@ import torch
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
 
+from src.analysis._plot_utils import (
+    AXIS_LABEL_SIZE,
+    LEGEND_FONT_SIZE,
+    LEGEND_TITLE_SIZE,
+    TICK_LABEL_SIZE,
+    TITLE_SIZE,
+    apply_paper_axis_style,
+)
+
 
 def run_sample_umap(
     reps_cache: Dict[int, Dict[str, torch.Tensor]],
@@ -118,6 +127,12 @@ def run_sample_umap(
                 pca_n_components=pca_n_components, pca_var_explained=pca_var_explained,
                 max_display_per_class=max_display_per_class,
             )
+            _plot_by_class_paper_subset(
+                Z_list, labels_np, sorted_task_indices, safe_layer, umap_dir,
+                checkpoint_numbers=[1, 7, 13, 20],
+                pca_n_components=pca_n_components, pca_var_explained=pca_var_explained,
+                max_display_per_class=max_display_per_class,
+            )
 
     print(f"  [sample_umap] Results saved to {umap_dir}")
 
@@ -188,8 +203,9 @@ def _plot_by_class(
         ax.set_ylabel("UMAP 2")
         ax.tick_params(left=False, bottom=False,
                        labelleft=False, labelbottom=False)
+        apply_paper_axis_style(ax)
         ax.text(0.02, 0.97, f"T{ax_idx + 1}", transform=ax.transAxes,
-                va="top", ha="left", fontsize=13, fontweight="bold")
+                va="top", ha="left", fontsize=TICK_LABEL_SIZE, fontweight="bold")
 
     # Hide unused axes
     for ax in axes_flat[T:]:
@@ -210,20 +226,103 @@ def _plot_by_class(
     fig.legend(
         handles=legend_handles,
         loc="center right",
-        fontsize=12,
+        fontsize=LEGEND_FONT_SIZE,
         framealpha=0.8,
         ncol=1,
         title="Class",
-        title_fontsize=13,
+        title_fontsize=LEGEND_TITLE_SIZE,
     )
 
     subtitle = _pca_subtitle(pca_n_components, pca_var_explained)
     if subtitle:
-        fig.text(0.5, 0.01, subtitle, ha="center", va="bottom", fontsize=12,
+        fig.text(0.5, 0.01, subtitle, ha="center", va="bottom", fontsize=TICK_LABEL_SIZE,
                  color="gray")
 
     plt.tight_layout(rect=[0, 0.03, 0.88, 1])
     out_path = os.path.join(umap_dir, f"umap_by_class_{safe_layer}.pdf")
+    plt.savefig(out_path)
+    plt.close()
+    print(f"    Saved {out_path}")
+
+
+def _plot_by_class_paper_subset(
+    Z_list: List[np.ndarray],
+    labels_np: np.ndarray,
+    task_indices: List[int],
+    safe_layer: str,
+    umap_dir: str,
+    checkpoint_numbers: List[int],
+    pca_n_components: Optional[int] = None,
+    pca_var_explained: Optional[float] = None,
+    max_display_per_class: int = 50,
+) -> None:
+    """One-row paper figure for selected CNN checkpoints, color = class."""
+    selected = []
+    for ckpt_num in checkpoint_numbers:
+        if ckpt_num in task_indices:
+            selected.append((task_indices.index(ckpt_num), ckpt_num))
+        elif 0 <= ckpt_num - 1 < len(task_indices):
+            selected.append((ckpt_num - 1, ckpt_num))
+
+    if len(selected) != len(checkpoint_numbers):
+        available = ", ".join(str(t) for t in task_indices)
+        print(
+            f"    Skipping paper UMAP subset for {safe_layer}: requested "
+            f"{checkpoint_numbers}, available checkpoints are [{available}]"
+        )
+        return
+
+    unique_classes = np.unique(labels_np)
+    n_classes = len(unique_classes)
+    cmap = cm.get_cmap("tab20" if n_classes <= 20 else "hsv", n_classes)
+    class_to_color = {int(c): cmap(i) for i, c in enumerate(unique_classes)}
+
+    rng = np.random.default_rng(42)
+    display_mask = _subsample_display_mask(labels_np, max_display_per_class, rng)
+
+    all_z = np.concatenate(Z_list, axis=0)
+    x_min, x_max = all_z[:, 0].min(), all_z[:, 0].max()
+    y_min, y_max = all_z[:, 1].min(), all_z[:, 1].max()
+    pad_x = (x_max - x_min) * 0.05
+    pad_y = (y_max - y_min) * 0.05
+
+    fig, axes = plt.subplots(1, 4, figsize=(16, 3.8))
+    for ax, (pos, label_num) in zip(axes, selected):
+        z_disp = Z_list[pos][display_mask]
+        labels_disp = labels_np[display_mask]
+        colors = [class_to_color[int(lb)] for lb in labels_disp]
+        ax.scatter(z_disp[:, 0], z_disp[:, 1], c=colors, s=12, alpha=0.75, linewidths=0)
+        ax.set_xlim(x_min - pad_x, x_max + pad_x)
+        ax.set_ylim(y_min - pad_y, y_max + pad_y)
+        ax.set_xlabel("UMAP 1")
+        ax.set_ylabel("UMAP 2")
+        ax.tick_params(left=False, bottom=False, labelleft=False, labelbottom=False)
+        apply_paper_axis_style(ax)
+        ax.text(0.03, 0.96, f"T{label_num}", transform=ax.transAxes,
+                va="top", ha="left", fontsize=TICK_LABEL_SIZE, fontweight="bold")
+
+    from matplotlib.patches import Patch
+    legend_handles = [
+        Patch(color=cmap(i), label=f"Class {int(c)}")
+        for i, c in enumerate(unique_classes)
+    ]
+    fig.legend(
+        handles=legend_handles,
+        loc="center right",
+        fontsize=LEGEND_FONT_SIZE,
+        framealpha=0.8,
+        ncol=1,
+        title="Class",
+        title_fontsize=LEGEND_TITLE_SIZE,
+    )
+
+    subtitle = _pca_subtitle(pca_n_components, pca_var_explained)
+    if subtitle:
+        fig.text(0.5, 0.01, subtitle, ha="center", va="bottom", fontsize=TICK_LABEL_SIZE,
+                 color="gray")
+
+    plt.tight_layout(rect=[0, 0.04, 0.88, 1])
+    out_path = os.path.join(umap_dir, f"umap_by_class_paper_{safe_layer}.pdf")
     plt.savefig(out_path)
     plt.close()
     print(f"    Saved {out_path}")
@@ -253,17 +352,18 @@ def _plot_by_checkpoint(
     ax.set_ylabel("UMAP 2")
     ax.tick_params(left=False, bottom=False,
                    labelleft=False, labelbottom=False)
+    apply_paper_axis_style(ax)
 
     if show_trajectory:
         _draw_trajectories([ax] * T, Z_list, traj_alpha, traj_subsample)
 
-    ax.legend(loc="upper right", fontsize=12, framealpha=0.8,
-              markerscale=2, title="Checkpoint", title_fontsize=13)
+    ax.legend(loc="upper right", fontsize=LEGEND_FONT_SIZE, framealpha=0.8,
+              markerscale=2, title="Checkpoint", title_fontsize=LEGEND_TITLE_SIZE)
 
     subtitle = _pca_subtitle(pca_n_components, pca_var_explained)
     if subtitle:
         ax.annotate(subtitle, xy=(0.5, -0.06), xycoords="axes fraction",
-                    ha="center", va="top", fontsize=12, color="gray")
+                    ha="center", va="top", fontsize=TICK_LABEL_SIZE, color="gray")
 
     plt.tight_layout()
     out_path = os.path.join(umap_dir, f"umap_by_checkpoint_{safe_layer}.pdf")

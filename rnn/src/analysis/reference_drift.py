@@ -13,7 +13,7 @@ import torch
 import matplotlib.pyplot as plt
 
 from src.drift_metrics import compute_metrics
-from src.analysis._plot_utils import t_labels, sparse_ticks
+from src.analysis._plot_utils import apply_paper_axis_style, sparse_ticks
 
 
 def _load_reps_from_npz(reps_dir: str, probe_task: str) -> Dict[int, np.ndarray]:
@@ -51,7 +51,7 @@ def plot_drift_results(results: List[Dict], task_names: List[str], output_dir: s
         ax1.plot(tasks_idx, shuffled_means, linestyle='--', color=line[0].get_color(), alpha=0.5, label='Shuffled Reference')
         ax1.set_xlabel("Trained Task Index")
         ax1.set_ylabel("Cosine Similarity")
-        ax1.legend()
+        apply_paper_axis_style(ax1, legend=True)
         ax1.grid(True, linestyle='--', alpha=0.6)
 
         l2_means = [next(r for r in task_results if r['target_task'] == t)['l2_dist_mean'] for t in tasks_idx]
@@ -59,7 +59,7 @@ def plot_drift_results(results: List[Dict], task_names: List[str], output_dir: s
         ax2.errorbar(tasks_idx, l2_means, yerr=l2_stds, label='L2 Distance', capsize=5, marker='o')
         ax2.set_xlabel("Trained Task Index")
         ax2.set_ylabel("L2 Distance")
-        ax2.legend()
+        apply_paper_axis_style(ax2, legend=True)
         ax2.grid(True, linestyle='--', alpha=0.6)
 
         # Sparse ticks: start, mid, end only — see _plot_utils.py for task mapping
@@ -68,6 +68,8 @@ def plot_drift_results(results: List[Dict], task_names: List[str], output_dir: s
         ax1.set_xticklabels(sl)
         ax2.set_xticks([tasks_idx[i] for i in sp])
         ax2.set_xticklabels(sl)
+        apply_paper_axis_style(ax1)
+        apply_paper_axis_style(ax2)
 
         plt.tight_layout()
         output_path = os.path.join(output_dir, f"drift_plot_{probe_task}.pdf")

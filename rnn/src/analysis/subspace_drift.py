@@ -18,7 +18,7 @@ import torch
 import matplotlib.pyplot as plt
 from sklearn.decomposition import PCA
 
-from src.analysis._plot_utils import t_labels, sparse_ticks
+from src.analysis._plot_utils import sparse_ticks, apply_paper_axis_style
 
 from src.analysis.reference_drift import _load_reps_from_npz
 
@@ -143,7 +143,7 @@ def _plot_coding_fraction(
     sp, sl = sparse_ticks(n)
     ax.set_xticks(sp)
     ax.set_xticklabels(sl)
-    ax.legend(loc="upper right")
+    apply_paper_axis_style(ax, legend=True, legend_kwargs={"loc": "upper right"})
     ax.grid(True, axis="y", linestyle="--", alpha=0.5)
 
     plt.tight_layout()
@@ -175,7 +175,7 @@ def _plot_drift_norms(
     sl_valid = [sl[sp.index(p)] for p in sp_valid]
     ax.set_xticks(sp_valid)
     ax.set_xticklabels(sl_valid)
-    ax.legend()
+    apply_paper_axis_style(ax, legend=True)
     ax.grid(True, linestyle="--", alpha=0.5)
 
     plt.tight_layout()
@@ -201,7 +201,7 @@ def _plot_variance_explained(
     ax.set_xlabel("Number of Principal Components")
     ax.set_ylabel("Cumulative Variance Explained")
     ax.set_ylim(0, 1.05)
-    ax.legend()
+    apply_paper_axis_style(ax, legend=True)
     ax.grid(True, linestyle="--", alpha=0.5)
 
     plt.tight_layout()
@@ -263,6 +263,7 @@ def _plot_dimensionality_over_checkpoints(
     ax1.set_ylabel("k (number of PCs)")
     ax1.set_xticks(sp)
     ax1.set_xticklabels(sl)
+    apply_paper_axis_style(ax1)
     ax1.grid(True, linestyle='--', alpha=0.5)
 
     # Right: participation ratio
@@ -271,6 +272,7 @@ def _plot_dimensionality_over_checkpoints(
     ax2.set_ylabel("Participation Ratio")
     ax2.set_xticks(sp)
     ax2.set_xticklabels(sl)
+    apply_paper_axis_style(ax2)
     ax2.grid(True, linestyle='--', alpha=0.5)
 
     plt.tight_layout()

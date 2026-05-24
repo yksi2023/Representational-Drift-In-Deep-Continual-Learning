@@ -3,6 +3,7 @@ from typing import Dict, List, Tuple
 import json
 import matplotlib.pyplot as plt
 import os
+from src.analysis._plot_utils import apply_paper_axis_style, sparse_value_ticks, TITLE_SIZE
 
 def evaluate(model, test_loader, criterion, device, active_classes_range=None):
     """
@@ -45,16 +46,13 @@ def evaluate(model, test_loader, criterion, device, active_classes_range=None):
 
 def plot_performance(online_results: List[float], retrospective_results: List[float], first_task_results: List[float], save_dir: str = None):
     '''Plot figures for within-task performance, retrospective performance, and first task forgetting.'''
-    import numpy as np
-    
     num_plots = 3 
     fig, axes = plt.subplots(1, num_plots, figsize=(8 * num_plots, 6))
     
     ax1, ax2, ax3 = axes
     
-    # X-axis ticks: step of 4, starting from 0
     max_tasks = max(len(online_results), len(retrospective_results), len(first_task_results))
-    xticks = np.arange(0, max_tasks + 4, 4)
+    xticks, xticklabels = sparse_value_ticks(range(1, max_tasks + 1))
     
     ax1.plot(range(1,len(online_results)+1), online_results, marker='o')
     ax2.plot(range(1,len(retrospective_results)+1), retrospective_results, marker='o')
@@ -63,6 +61,9 @@ def plot_performance(online_results: List[float], retrospective_results: List[fl
     ax1.set_ylabel("Accuracy")
     ax1.set_ylim(0, 100)
     ax1.set_xticks(xticks)
+    ax1.set_xticklabels(xticklabels)
+    ax1.title.set_size(TITLE_SIZE)
+    apply_paper_axis_style(ax1)
     ax1.grid(True, linestyle='--', alpha=0.6)
     
     ax2.set_title("Performance on Previous Tasks After Completing All Training")
@@ -70,6 +71,9 @@ def plot_performance(online_results: List[float], retrospective_results: List[fl
     ax2.set_ylabel("Accuracy")
     ax2.set_ylim(0, 100)
     ax2.set_xticks(xticks)
+    ax2.set_xticklabels(xticklabels)
+    ax2.title.set_size(TITLE_SIZE)
+    apply_paper_axis_style(ax2)
     ax2.grid(True, linestyle='--', alpha=0.6)
     
     ax3.plot(range(1, len(first_task_results)+1), first_task_results, marker='o', color='red')
@@ -78,6 +82,9 @@ def plot_performance(online_results: List[float], retrospective_results: List[fl
     ax3.set_ylabel("Accuracy")
     ax3.set_ylim(0, 100)
     ax3.set_xticks(xticks)
+    ax3.set_xticklabels(xticklabels)
+    ax3.title.set_size(TITLE_SIZE)
+    apply_paper_axis_style(ax3)
     ax3.grid(True, linestyle='--', alpha=0.6)
     
     plt.tight_layout()

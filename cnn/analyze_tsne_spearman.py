@@ -20,6 +20,7 @@ from scipy.stats import spearmanr
 from src.models import FashionMNISTModel, ResNet18_Tiny, PretrainedResNet18
 from src.checkpoints import list_checkpoints, load_model
 from src.analysis.sample_similarity import extract_representations_with_labels, compute_sample_similarity_matrix
+from src.analysis._plot_utils import apply_paper_axis_style, sparse_ticks, TICK_LABEL_SIZE, TITLE_SIZE
 from datasets import IncrementalFashionMNIST, IncrementalTinyImageNet
 
 def parse_args():
@@ -188,12 +189,15 @@ def main():
         # Add colorbar
         cbar = ax.figure.colorbar(im, ax=ax, shrink=0.8)
         cbar.ax.set_ylabel('Spearman Correlation', rotation=-90, va="bottom")
+        cbar.ax.yaxis.label.set_size(30)
+        cbar.ax.tick_params(labelsize=TICK_LABEL_SIZE)
         
         # Set ticks and labels
-        ax.set_xticks(range(len(tasks)))
-        ax.set_yticks(range(len(tasks)))
-        ax.set_xticklabels([f'T{t}' for t in tasks])
-        ax.set_yticklabels([f'T{t}' for t in tasks])
+        sp, sl = sparse_ticks(len(tasks))
+        ax.set_xticks(sp)
+        ax.set_yticks(sp)
+        ax.set_xticklabels(sl)
+        ax.set_yticklabels(sl)
         
         # Rotate x labels for better readability
         plt.setp(ax.get_xticklabels(), rotation=45, ha="right", rotation_mode="anchor")
@@ -205,8 +209,10 @@ def main():
                               ha="center", va="center", color="black", fontsize=8)
         
         ax.set_title(f'Spearman Rank Correlation of Sample Similarity\nLayer: {layer}')
+        ax.title.set_size(TITLE_SIZE)
         ax.set_xlabel('Model after Task')
         ax.set_ylabel('Model after Task')
+        apply_paper_axis_style(ax)
         
         plt.tight_layout()
         

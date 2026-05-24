@@ -11,10 +11,12 @@ plt.rcParams.update({
     'savefig.dpi': 500,
     'savefig.bbox': 'tight',
     'savefig.pad_inches': 0.02,
-    'axes.labelsize': 18,
-    'xtick.labelsize': 16,
-    'ytick.labelsize': 16,
-    'legend.fontsize': 16,
+    'axes.labelsize': 30,
+    'xtick.labelsize': 26,
+    'ytick.labelsize': 26,
+    'legend.fontsize': 24,
+    'legend.title_fontsize': 26,
+    'axes.titlesize': 30,
 })
 
 from .cache import build_reps_cache
