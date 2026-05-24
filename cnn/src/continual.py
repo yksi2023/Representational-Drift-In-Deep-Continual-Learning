@@ -28,6 +28,7 @@ def incremental_learning(
     first_task_only_memory: bool = False,
     memory_per_class: Optional[int] = None,
     ewc_lambda: float = 1000.0,
+    ewc_protect: str = 'first',
     gpm_threshold: float = 0.99,
     lwf_lambda: float = 1.0,
     lwf_temperature: float = 2.0,
@@ -120,6 +121,7 @@ def incremental_learning(
     elif method_lower == 'ewc':
         method_kwargs = {
             "ewc_lambda": ewc_lambda,
+            "ewc_protect": ewc_protect,
         }
     elif method_lower == 'gpm':
         method_kwargs = {

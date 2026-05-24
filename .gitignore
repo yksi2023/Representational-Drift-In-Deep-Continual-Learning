@@ -26,3 +26,5 @@ scripts
 .aider*
 .vscode
 pretrained_weights/
+.codex/
+.agents/
