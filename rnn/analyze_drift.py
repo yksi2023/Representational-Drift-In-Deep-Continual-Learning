@@ -1,16 +1,17 @@
 """Analyze representational drift across RNN continual learning checkpoints.
 
 This script provides comprehensive drift analysis including:
-1. Baseline STPV drift metrics (cosine similarity, L2 distance over tasks)
+1. Reference-anchored STPV drift metrics (cosine similarity, L2 distance over tasks)
 2. Model pairwise STPV similarity matrices
 3. Sample-wise STPV similarity matrices
 4. Cross-checkpoint PV similarity matrices
 5. Vector drift (STPV / PV / ERV / TCV Pearson correlation vs task gap)
 6. Coding / null subspace drift decomposition
 7. Performance plots (from saved performance_history.json)
+8. Direction UMAP (Go-family tasks: loads checkpoints on first run, caches to .npz)
 
-Representations are loaded from pre-saved .npz files (generated during training),
-so no GPU re-extraction is needed.
+Steps 1–7 use pre-saved .npz representations (no GPU needed).
+Step 8 uses cached .npz if available, otherwise loads checkpoints (GPU recommended).
 
 Usage:
     python analyze_drift.py --exp_dir experiments/exp2_rnn_normal
@@ -22,13 +23,14 @@ import os
 import sys
 
 from src.analysis import (
-    run_baseline_drift,
+    run_reference_drift,
     run_model_similarity,
     run_sample_similarity,
     run_temporal_similarity,
     run_vector_drift,
     run_subspace_drift,
     plot_rnn_performance,
+    run_sample_umap,
 )
 
 
@@ -48,6 +50,12 @@ def parse_args():
                         help="Skip sample similarity matrices (can be slow for many tasks)")
     parser.add_argument("--hidden_size", type=int, default=256,
                         help="RNN hidden size (needed to reshape flat reps for temporal analysis)")
+    parser.add_argument("--skip_umap", action="store_true",
+                        help="Skip direction UMAP analysis (requires checkpoint loading on first run)")
+    parser.add_argument("--n_directions", type=int, default=8,
+                        help="Number of uniformly-spaced stimulus directions for UMAP (default: 8)")
+    parser.add_argument("--n_trials_per_dir", type=int, default=40,
+                        help="Repetitions per direction for UMAP (default: 40)")
     return parser.parse_args()
 
 
@@ -118,9 +126,9 @@ def main():
     print(f"Output dir: {args.output_dir}")
     print("=" * 60)
 
-    # 1. Baseline drift analysis
-    print("\n[1/7] Running baseline STPV drift analysis...")
-    run_baseline_drift(
+    # 1. Reference-anchored drift analysis
+    print("\n[1/8] Running reference-anchored STPV drift analysis...")
+    run_reference_drift(
         exp_dir=args.exp_dir,
         probe_tasks=args.probe_tasks,
         task_names=task_names,
@@ -130,7 +138,7 @@ def main():
     )
 
     # 2. Model pairwise cosine similarity matrices
-    print("\n[2/7] Running model STPV similarity analysis...")
+    print("\n[2/8] Running model STPV similarity analysis...")
     run_model_similarity(
         exp_dir=args.exp_dir,
         probe_tasks=args.probe_tasks,
@@ -140,7 +148,7 @@ def main():
 
     # 3. Sample-wise similarity matrices
     if not args.skip_sample_sim:
-        print("\n[3/7] Running sample similarity analysis...")
+        print("\n[3/8] Running sample similarity analysis...")
         run_sample_similarity(
             exp_dir=args.exp_dir,
             probe_tasks=args.probe_tasks,
@@ -148,10 +156,10 @@ def main():
             output_dir=args.output_dir,
         )
     else:
-        print("\n[3/7] Skipping sample similarity (--skip_sample_sim).")
+        print("\n[3/8] Skipping sample similarity (--skip_sample_sim).")
 
     # 4. Temporal hidden state similarity
-    print("\n[4/7] Running cross-checkpoint PV similarity...")
+    print("\n[4/8] Running cross-checkpoint PV similarity...")
     run_temporal_similarity(
         exp_dir=args.exp_dir,
         probe_tasks=args.probe_tasks,
@@ -161,7 +169,7 @@ def main():
     )
 
     # 5. Vector drift (PV / ERV / TCV)
-    print("\n[5/7] Running vector drift analysis (STPV / PV / ERV / TCV)...")
+    print("\n[5/8] Running vector drift analysis (STPV / PV / ERV / TCV)...")
     run_vector_drift(
         exp_dir=args.exp_dir,
         probe_tasks=args.probe_tasks,
@@ -171,7 +179,7 @@ def main():
     )
 
     # 6. Coding / null subspace drift decomposition
-    print("\n[6/7] Running coding/null subspace drift decomposition...")
+    print("\n[6/8] Running coding/null subspace drift decomposition...")
     run_subspace_drift(
         exp_dir=args.exp_dir,
         probe_tasks=args.probe_tasks,
@@ -180,11 +188,25 @@ def main():
     )
 
     # 7. Performance plots
-    print("\n[7/7] Generating performance plots...")
+    print("\n[7/8] Generating performance plots...")
     try:
         plot_rnn_performance(args.exp_dir, args.output_dir)
     except FileNotFoundError as e:
         print(f"  Skipping performance plots: {e}")
+
+    # 8. Direction UMAP
+    if not args.skip_umap:
+        print("\n[8/8] Running direction UMAP analysis...")
+        run_sample_umap(
+            exp_dir=args.exp_dir,
+            probe_tasks=args.probe_tasks,
+            task_names=task_names,
+            output_dir=args.output_dir,
+            n_directions=args.n_directions,
+            n_trials_per_dir=args.n_trials_per_dir,
+        )
+    else:
+        print("\n[8/8] Skipping direction UMAP (--skip_umap).")
 
     print("\n" + "=" * 60)
     print("ANALYSIS COMPLETE")

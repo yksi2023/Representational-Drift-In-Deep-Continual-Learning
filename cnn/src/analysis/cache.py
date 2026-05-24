@@ -5,7 +5,7 @@ checkpoint and stores them in memory. Downstream drift analyses consume this
 cache instead of re-running the model.
 
 Also captures probe-sample labels (once) and optionally subsamples neurons per
-layer (using baseline dimensions, reused across all checkpoints for
+layer (using reference dimensions, reused across all checkpoints for
 consistency).
 """
 from typing import Dict, List, Optional, Tuple
@@ -40,7 +40,7 @@ def build_reps_cache(
         max_batches: Optional batch limit.
         use_amp: Use CUDA mixed precision forward.
         neuron_ratio: Fraction in (0, 1] of neurons to randomly keep per layer.
-            Indices are drawn once from baseline shape and reused for all
+            Indices are drawn once from reference shape and reused for all
             checkpoints so that dimensions align.
         seed: RNG seed for neuron sampling.
 
@@ -65,7 +65,7 @@ def build_reps_cache(
     labels_cached: Optional[torch.Tensor] = None
     neuron_indices: Dict[str, Optional[torch.Tensor]] = {ln: None for ln in layer_names}
 
-    baseline_idx = sorted_task_indices[0]
+    reference_idx = sorted_task_indices[0]
 
     for task_idx in sorted_task_indices:
         print(f"  [cache] extracting reps for task {task_idx}...")
@@ -108,8 +108,8 @@ def build_reps_cache(
             for ln, v in collected.items()
         }
 
-        # Draw neuron indices from baseline shapes, then reuse for all checkpoints.
-        if task_idx == baseline_idx and neuron_ratio < 1.0:
+        # Draw neuron indices from reference shapes, then reuse for all checkpoints.
+        if task_idx == reference_idx and neuron_ratio < 1.0:
             print(f"  [cache] sampling {neuron_ratio * 100:.1f}% neurons per layer (seed={seed})")
             for ln in layer_names:
                 num_neurons = reps_this[ln].shape[1]

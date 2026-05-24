@@ -64,7 +64,7 @@ bash analysis_cnn.sh 1
 
 `analyze_drift.py` runs 6 analysis stages per checkpoint:
 
-1. **Baseline drift** — cosine / L2 distance vs first checkpoint
+1. **Reference drift** — cosine / L2 distance vs first checkpoint
 2. **Model similarity** — pairwise cosine similarity matrix + decay profile
 3. **Sample similarity** — per-sample cosine similarity matrices
 4. **Subspace drift** — coding/null subspace decomposition via PCA

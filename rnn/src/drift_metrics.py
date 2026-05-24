@@ -13,7 +13,7 @@ def compute_metrics(a: torch.Tensor, b: torch.Tensor) -> Dict[str, float]:
 
     Returns:
         Dictionary containing mean and std of cosine similarity, L2 distance,
-        and shuffled baseline similarity.
+        and shuffled-reference similarity.
     """
     if a.size() != b.size():
         raise ValueError(f"Shape mismatch: {a.shape} vs {b.shape}")
@@ -31,7 +31,7 @@ def compute_metrics(a: torch.Tensor, b: torch.Tensor) -> Dict[str, float]:
     cos_sim = F.cosine_similarity(a, b, dim=1, eps=1e-8)
     l2_dist = torch.norm(a - b, p=2, dim=1)
 
-    # Shuffled baseline: shuffle features within each sample
+    # Shuffled reference: shuffle features within each sample
     N, D = b.shape
     rand_idx = torch.rand(N, D, device=b.device).argsort(dim=1)
     b_shuffled = torch.gather(b, 1, rand_idx)
@@ -97,5 +97,4 @@ def compute_pairwise_pearson_matrix(stpv_list: List[torch.Tensor]) -> torch.Tens
                 corr_matrix[i, j] = corr.mean().item()
 
     return corr_matrix
-
 

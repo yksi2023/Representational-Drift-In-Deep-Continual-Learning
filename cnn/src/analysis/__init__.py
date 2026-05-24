@@ -18,7 +18,7 @@ plt.rcParams.update({
 })
 
 from .cache import build_reps_cache
-from .baseline_drift import run_baseline_drift
+from .reference_drift import run_baseline_drift, run_reference_drift
 from .model_similarity import run_model_similarity
 from .sample_similarity import run_sample_similarity
 from .subspace_drift import run_subspace_drift
@@ -32,6 +32,7 @@ from .drift_metrics import (
 
 __all__ = [
     "build_reps_cache",
+    "run_reference_drift",
     "run_baseline_drift",
     "run_model_similarity",
     "run_sample_similarity",

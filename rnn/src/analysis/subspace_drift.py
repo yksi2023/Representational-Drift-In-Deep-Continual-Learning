@@ -20,7 +20,7 @@ from sklearn.decomposition import PCA
 
 from src.analysis._plot_utils import t_labels, sparse_ticks
 
-from src.analysis.baseline_drift import _load_reps_from_npz
+from src.analysis.reference_drift import _load_reps_from_npz
 
 
 # ---------------------------------------------------------------------------

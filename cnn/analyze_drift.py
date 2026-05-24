@@ -5,10 +5,10 @@ Pipeline:
      forward pass on the probe loader and collect activations for every
      requested layer. Optional per-layer neuron subsampling (same indices
      across all checkpoints).
-  1. Baseline drift (cosine / L2 / shuffled control vs first checkpoint).
+  1. Reference drift (cosine / L2 / shuffled control vs first checkpoint).
   2. Model pairwise cosine similarity matrices + decay profile vs task gap.
   3. Sample-wise cosine similarity matrices (per checkpoint, per layer).
-  4. Coding / null subspace drift decomposition (PCA of baseline reps).
+  4. Coding / null subspace drift decomposition (PCA of reference reps).
   5. Pearson correlation of Sample-PV and ERV vs task gap.
   6. Performance plots from saved training metrics.
 """
@@ -23,7 +23,7 @@ from src.models import MODEL_DEFAULTS, build_model
 from src.checkpoints import list_checkpoints
 from src.analysis import (
     build_reps_cache,
-    run_baseline_drift,
+    run_reference_drift,
     run_model_similarity,
     run_sample_similarity,
     run_subspace_drift,
@@ -54,7 +54,7 @@ def parse_args():
     parser.add_argument("--skip_sample_sim", action="store_true",
                         help="Skip sample similarity matrices (costly for many checkpoints)")
     parser.add_argument("--skip_distributions", action="store_true",
-                        help="Skip per-task activation histograms in baseline drift")
+                        help="Skip per-task activation histograms in reference drift")
     parser.add_argument("--skip_umap", action="store_true",
                         help="Skip sample UMAP visualization")
     parser.add_argument("--umap_color_by", type=str, default="class",
@@ -114,7 +114,7 @@ def setup_environment(args):
 
     meta_path = os.path.join(args.ckpt_dir, "model_after_task_1.json")
     if not os.path.exists(meta_path):
-        raise FileNotFoundError(f"Cannot find baseline metadata at {meta_path}")
+        raise FileNotFoundError(f"Cannot find reference metadata at {meta_path}")
     with open(meta_path, "r", encoding="utf-8") as f:
         increment = json.load(f)["training_params"]["increment"]
 
@@ -159,9 +159,9 @@ def main():
     print(f"  Cache built: {len(reps_cache)} checkpoints × {len(layer_names)} layers, "
           f"N={labels.shape[0]} probe samples")
 
-    # 1. Baseline drift
-    print("\n[1/6] Running baseline drift analysis...")
-    run_baseline_drift(
+    # 1. Reference-anchored drift
+    print("\n[1/6] Running reference drift analysis...")
+    run_reference_drift(
         reps_cache=reps_cache,
         layer_names=layer_names,
         output_dir=args.output_dir,

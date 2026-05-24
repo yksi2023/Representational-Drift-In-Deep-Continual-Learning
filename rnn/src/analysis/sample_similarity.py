@@ -11,7 +11,7 @@ import torch
 import torch.nn.functional as F
 import matplotlib.pyplot as plt
 
-from src.analysis.baseline_drift import _load_reps_from_npz
+from src.analysis.reference_drift import _load_reps_from_npz
 
 
 def compute_sample_similarity_matrix(reps: torch.Tensor, metric: str = "cosine") -> torch.Tensor:

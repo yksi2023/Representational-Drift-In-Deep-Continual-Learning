@@ -17,7 +17,7 @@ from src.drift_metrics import (
     compute_pairwise_similarity_matrix,
     compute_pairwise_pearson_matrix,
 )
-from src.analysis.baseline_drift import _load_reps_from_npz
+from src.analysis.reference_drift import _load_reps_from_npz
 
 
 def plot_similarity_matrix(

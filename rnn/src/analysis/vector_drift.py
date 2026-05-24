@@ -20,7 +20,7 @@ import torch
 import torch.nn.functional as F
 import matplotlib.pyplot as plt
 
-from src.analysis.baseline_drift import _load_reps_from_npz
+from src.analysis.reference_drift import _load_reps_from_npz
 
 
 def _reshape_to_3d(flat: np.ndarray, hidden_size: int) -> torch.Tensor:

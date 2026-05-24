@@ -39,7 +39,7 @@ def compute_metrics(a: torch.Tensor, b: torch.Tensor) -> Dict[str, float]:
     # (a - b) shape [N, D] -> norm(dim=1) -> shape [N]
     l2_dist = torch.norm(a - b, p=2, dim=1)
 
-    # 3. Shuffled Baseline Similarity
+    # 3. Shuffled Reference Similarity
     # Shuffle b along dimension 1 (features) for each sample
     N, D = b.shape
     rand_idx = torch.rand(N, D, device=b.device).argsort(dim=1)
@@ -82,4 +82,3 @@ def compute_pairwise_similarity_matrix(reps_list: List[torch.Tensor]) -> torch.T
                 sim_matrix[i, j] = cos_sim.mean().item()
     
     return sim_matrix
-
