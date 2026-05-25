@@ -19,7 +19,14 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 
-from src.analysis._plot_utils import apply_paper_axis_style, sparse_value_ticks
+from src.analysis._plot_utils import (
+    SMALL_LEGEND_FONT_SIZE,
+    SMALL_LEGEND_TITLE_SIZE,
+    WIDE_FIGSIZE,
+    apply_paper_axis_style,
+    savefig_compact,
+    sparse_value_ticks,
+)
 
 
 def _pearson(a: torch.Tensor, b: torch.Tensor, dim: int) -> torch.Tensor:
@@ -61,7 +68,7 @@ def _plot_all_layers(
     output_path: str,
 ):
     """Plot Sample-PV correlation vs gap for all layers on one figure."""
-    fig, ax = plt.subplots(figsize=(10, 6))
+    fig, ax = plt.subplots(figsize=WIDE_FIGSIZE)
     cmap = plt.get_cmap("tab10")
     all_gaps: List[int] = []
 
@@ -74,15 +81,22 @@ def _plot_all_layers(
     ax.set_xlabel("Task Gap")
     ax.set_ylabel("Pearson Correlation")
     ax.set_ylim(-0.1, 1.05)
-    apply_paper_axis_style(ax, legend=True, legend_kwargs={"loc": "lower left"})
+    apply_paper_axis_style(
+        ax,
+        legend=True,
+        legend_kwargs={
+            "loc": "lower left",
+            "fontsize": SMALL_LEGEND_FONT_SIZE,
+            "title_fontsize": SMALL_LEGEND_TITLE_SIZE,
+        },
+    )
     ax.grid(True, linestyle="--", alpha=0.6)
     if all_gaps:
         ticks, labels = sparse_value_ticks(all_gaps)
         ax.set_xticks(ticks)
         ax.set_xticklabels(labels)
 
-    plt.tight_layout()
-    plt.savefig(output_path)
+    savefig_compact(fig, output_path)
     plt.close()
 
 

@@ -10,7 +10,7 @@ from typing import Dict, List, Optional
 import numpy as np
 import matplotlib.pyplot as plt
 
-from src.analysis._plot_utils import apply_paper_axis_style, sparse_ticks
+from src.analysis._plot_utils import SINGLE_FIGSIZE, apply_paper_axis_style, savefig_compact, sparse_ticks
 
 
 def plot_rnn_performance(exp_dir: str, output_dir: str) -> None:
@@ -70,9 +70,10 @@ def _plot_matrix_heatmap(
     cmap: str = 'viridis',
 ):
     """Plot a matrix as a heatmap with sparse row/col labels."""
-    fig, ax = plt.subplots(figsize=(9, 7))
+    fig, ax = plt.subplots(figsize=SINGLE_FIGSIZE)
 
-    im = ax.imshow(matrix, cmap=cmap, vmin=vmin, vmax=vmax, aspect='auto')
+    im = ax.imshow(matrix, cmap=cmap, vmin=vmin, vmax=vmax, aspect='equal')
+    ax.set_box_aspect(1)
 
     sp_c, sl_c = sparse_ticks(n_cols)
     sp_r, sl_r = sparse_ticks(n_rows)
@@ -85,8 +86,7 @@ def _plot_matrix_heatmap(
     ax.set_ylabel("Evaluated Task")
     apply_paper_axis_style(ax)
 
-    plt.tight_layout()
-    plt.savefig(output_path)
+    savefig_compact(fig, output_path)
     print(f"    Saved {output_path}")
     plt.close()
 

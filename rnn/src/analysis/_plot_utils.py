@@ -7,6 +7,10 @@ TICK_LABEL_SIZE = 26
 LEGEND_FONT_SIZE = 24
 LEGEND_TITLE_SIZE = 26
 TITLE_SIZE = 30
+SINGLE_FIGSIZE = (7.2, 7.2)
+WIDE_FIGSIZE = (8.8, 5.8)
+SMALL_LEGEND_FONT_SIZE = 16
+SMALL_LEGEND_TITLE_SIZE = 18
 
 # ---------------------------------------------------------------------------
 # Default 18-task sequence (DEFAULT_TASKS order in datasets.py).
@@ -70,3 +74,8 @@ def apply_paper_axis_style(ax, legend: bool = False, legend_kwargs=None) -> None
         if legend_kwargs:
             kwargs.update(legend_kwargs)
         ax.legend(**kwargs)
+
+
+def savefig_compact(fig, path: str) -> None:
+    """Save with minimal whitespace while preserving labels."""
+    fig.savefig(path, bbox_inches="tight", pad_inches=0.02)

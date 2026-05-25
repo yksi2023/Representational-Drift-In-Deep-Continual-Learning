@@ -11,7 +11,7 @@ import numpy as np
 import torch
 import matplotlib.pyplot as plt
 
-from src.analysis._plot_utils import apply_paper_axis_style, sparse_ticks
+from src.analysis._plot_utils import SINGLE_FIGSIZE, apply_paper_axis_style, savefig_compact, sparse_ticks
 
 from src.drift_metrics import (
     compute_pairwise_similarity_matrix,
@@ -28,10 +28,11 @@ def plot_similarity_matrix(
     metric_label: str = "Cosine Similarity",
 ):
     """Plot similarity matrix as a heatmap."""
-    fig, ax = plt.subplots(figsize=(7, 6))
+    fig, ax = plt.subplots(figsize=SINGLE_FIGSIZE)
 
     matrix_np = sim_matrix.numpy()
-    im = ax.imshow(matrix_np, cmap='viridis', vmin=0, vmax=1)
+    im = ax.imshow(matrix_np, cmap='viridis', vmin=0, vmax=1, aspect='equal')
+    ax.set_box_aspect(1)
 
     sp, sl = sparse_ticks(len(task_names))
     ax.set_xticks(sp)
@@ -44,8 +45,7 @@ def plot_similarity_matrix(
     ax.set_ylabel('Model after Task')
     apply_paper_axis_style(ax)
 
-    plt.tight_layout()
-    plt.savefig(output_path)
+    savefig_compact(fig, output_path)
     print(f"  Matrix saved to {output_path}")
     plt.close()
 

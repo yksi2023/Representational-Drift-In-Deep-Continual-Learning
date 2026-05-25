@@ -8,7 +8,16 @@ import torch
 import torch.nn.functional as F
 
 from src.analysis.drift_metrics import compute_pairwise_similarity_matrix
-from src.analysis._plot_utils import apply_paper_axis_style, sparse_ticks, sparse_value_ticks
+from src.analysis._plot_utils import (
+    SINGLE_FIGSIZE,
+    SMALL_LEGEND_FONT_SIZE,
+    SMALL_LEGEND_TITLE_SIZE,
+    WIDE_FIGSIZE,
+    apply_paper_axis_style,
+    savefig_compact,
+    sparse_ticks,
+    sparse_value_ticks,
+)
 
 
 def plot_similarity_matrix(
@@ -19,9 +28,10 @@ def plot_similarity_matrix(
     metric_label: str = "Cosine Similarity",
 ):
     """Plot similarity matrix as a heatmap with colormap."""
-    fig, ax = plt.subplots(figsize=(7, 6))
+    fig, ax = plt.subplots(figsize=WIDE_FIGSIZE)
     matrix_np = sim_matrix.numpy()
-    im = ax.imshow(matrix_np, cmap="viridis", vmin=0, vmax=1)
+    im = ax.imshow(matrix_np, cmap="viridis", vmin=0, vmax=1, aspect="equal")
+    ax.set_box_aspect(1)
 
     sp, sl = sparse_ticks(len(task_indices))
     ax.set_xticks(sp)
@@ -33,8 +43,7 @@ def plot_similarity_matrix(
     ax.set_xlabel("Model after Task")
     ax.set_ylabel("Model after Task")
     apply_paper_axis_style(ax)
-    plt.tight_layout()
-    plt.savefig(output_path)
+    savefig_compact(fig, output_path)
     print(f"Similarity matrix saved to {output_path}")
     plt.close()
 
@@ -70,7 +79,7 @@ def plot_similarity_decay_profile(
     output_path: str,
     exclude_first: bool = True,
 ):
-    fig, ax = plt.subplots(figsize=(10, 6))
+    fig, ax = plt.subplots(figsize=SINGLE_FIGSIZE)
     all_gaps: List[int] = []
     for layer_name in layer_names:
         gaps, means, stds = compute_similarity_by_gap(all_reps[layer_name], task_indices, exclude_first)
@@ -84,11 +93,17 @@ def plot_similarity_decay_profile(
         ticks, labels = sparse_value_ticks(all_gaps)
         ax.set_xticks(ticks)
         ax.set_xticklabels(labels)
-    apply_paper_axis_style(ax, legend=True)
+    apply_paper_axis_style(
+        ax,
+        legend=True,
+        legend_kwargs={
+            "fontsize": SMALL_LEGEND_FONT_SIZE,
+            "title_fontsize": SMALL_LEGEND_TITLE_SIZE,
+        },
+    )
     ax.grid(True, linestyle="--", alpha=0.6)
 
-    plt.tight_layout()
-    plt.savefig(output_path)
+    savefig_compact(fig, output_path)
     print(f"Similarity decay profile saved to {output_path}")
     plt.close()
 

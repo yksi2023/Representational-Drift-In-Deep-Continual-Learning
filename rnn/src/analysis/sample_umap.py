@@ -29,9 +29,11 @@ import matplotlib.cm as cm
 from src.analysis._plot_utils import (
     LEGEND_FONT_SIZE,
     LEGEND_TITLE_SIZE,
+    SINGLE_FIGSIZE,
     TICK_LABEL_SIZE,
     TITLE_SIZE,
     apply_paper_axis_style,
+    savefig_compact,
 )
 
 from datasets import Trial, get_default_config
@@ -315,7 +317,7 @@ def _extract_or_load_umap_reps(
 def _pca_umap(
     reps_per_ckpt: List[np.ndarray],
     pca_var_threshold: float = 0.90,
-) -> Tuple[List[np.ndarray], Optional[int], Optional[float]]:
+) -> Tuple[List[np.ndarray], Optional[int], Optional[float], Optional[np.ndarray], Optional[np.ndarray]]:
     """Run PCA → UMAP on concatenated checkpoint reps.
 
     Args:
@@ -326,6 +328,8 @@ def _pca_umap(
         Z_list: list of (N, 2) UMAP embeddings per checkpoint.
         pca_k: number of PCA components kept.
         pca_var: actual variance explained.
+        eigenvalues: PCA eigenvalues, if PCA was run.
+        explained_ratio: PCA explained variance ratios, if PCA was run.
     """
     try:
         import umap as umap_lib
@@ -340,6 +344,7 @@ def _pca_umap(
 
     # PCA
     pca_k, pca_var = None, None
+    eigenvalues, explained_ratio = None, None
     if pca_var_threshold > 0 and X_all.shape[1] > 50:
         from sklearn.decomposition import PCA
         n_cap = min(512, X_all.shape[0] - 1, X_all.shape[1] - 1)
@@ -351,6 +356,8 @@ def _pca_umap(
         X_pca = pca.transform(X_all)[:, :k]
         pca_k = k
         pca_var = float(cumvar[k - 1])
+        eigenvalues = pca.explained_variance_
+        explained_ratio = pca.explained_variance_ratio_
         print(f"      PCA: {X_all.shape[1]}D → {k}D ({pca_var*100:.1f}% var)")
     else:
         X_pca = X_all
@@ -360,7 +367,7 @@ def _pca_umap(
     Z_all = reducer.fit_transform(X_pca)
 
     Z_list = [Z_all[i * N:(i + 1) * N] for i in range(T)]
-    return Z_list, pca_k, pca_var
+    return Z_list, pca_k, pca_var, eigenvalues, explained_ratio
 
 
 # ======================================================================
@@ -371,6 +378,42 @@ def _pca_subtitle(pca_k: Optional[int], pca_var: Optional[float]) -> str:
     if pca_k is None or pca_var is None:
         return ""
     return f"PCA {pca_k}D: {pca_var * 100:.1f}% var explained"
+
+
+def _plot_pca_diagnostics(
+    eigenvalues: Optional[np.ndarray],
+    explained_ratio: Optional[np.ndarray],
+    selected_k: Optional[int],
+    safe_name: str,
+    umap_dir: str,
+) -> None:
+    """Plot cumulative explained variance and PCA scree diagnostics."""
+    if eigenvalues is None or explained_ratio is None or selected_k is None:
+        return
+
+    pcs = np.arange(1, len(eigenvalues) + 1)
+    cumvar = np.cumsum(explained_ratio)
+
+    fig, ax = plt.subplots(figsize=SINGLE_FIGSIZE)
+    ax.plot(pcs, cumvar, linewidth=2.5)
+    ax.axvline(selected_k, color="red", linestyle="--", linewidth=2, label=f"k={selected_k}")
+    ax.set_xlabel("Principal Component")
+    ax.set_ylabel("Cumulative Explained Variance")
+    ax.set_ylim(0, 1.02)
+    apply_paper_axis_style(ax, legend=True)
+    ax.grid(True, linestyle="--", alpha=0.5)
+    savefig_compact(fig, os.path.join(umap_dir, f"pca_explained_variance_{safe_name}.pdf"))
+    plt.close(fig)
+
+    fig, ax = plt.subplots(figsize=SINGLE_FIGSIZE)
+    ax.plot(pcs, eigenvalues, linewidth=2.5)
+    ax.axvline(selected_k, color="red", linestyle="--", linewidth=2, label=f"k={selected_k}")
+    ax.set_xlabel("Principal Component")
+    ax.set_ylabel("Eigenvalue")
+    apply_paper_axis_style(ax, legend=True)
+    ax.grid(True, linestyle="--", alpha=0.5)
+    savefig_compact(fig, os.path.join(umap_dir, f"pca_scree_{safe_name}.pdf"))
+    plt.close(fig)
 
 
 def _plot_direction_umap(
@@ -507,7 +550,7 @@ def _plot_direction_umap_paper_subset(
     pad_x = (x_max - x_min) * 0.05
     pad_y = (y_max - y_min) * 0.05
 
-    fig, axes = plt.subplots(1, 4, figsize=(16, 3.8))
+    fig, axes = plt.subplots(1, 4, figsize=(18, 4.2))
     for ax, (pos, label_num) in zip(axes, selected):
         z_disp = Z_list[pos][mask]
         labels_disp = direction_labels[mask]
@@ -529,7 +572,8 @@ def _plot_direction_umap_paper_subset(
     ]
     fig.legend(
         handles=legend_handles,
-        loc="center right",
+        loc="center left",
+        bbox_to_anchor=(0.84, 0.5),
         fontsize=LEGEND_FONT_SIZE,
         framealpha=0.8,
         ncol=1,
@@ -543,7 +587,7 @@ def _plot_direction_umap_paper_subset(
                  color="gray")
 
     fig.suptitle(f"{probe_task} — {rep_name}", fontsize=TITLE_SIZE, fontweight="bold")
-    plt.tight_layout(rect=[0, 0.04, 0.88, 0.94])
+    plt.tight_layout(rect=[0, 0.04, 0.80, 0.94])
     out_path = os.path.join(umap_dir, f"umap_{rep_name}_{probe_task}_paper.pdf")
     plt.savefig(out_path)
     plt.close()
@@ -614,7 +658,11 @@ def run_sample_umap(
                 data[f"{rep_name}_after_task_{t}"] for t in task_indices
             ]
 
-            Z_list, pca_k, pca_var = _pca_umap(reps_per_ckpt, pca_var_threshold)
+            Z_list, pca_k, pca_var, eigenvalues, explained_ratio = _pca_umap(
+                reps_per_ckpt, pca_var_threshold
+            )
+            safe_name = f"{rep_name}_{probe_task}"
+            _plot_pca_diagnostics(eigenvalues, explained_ratio, pca_k, safe_name, umap_dir)
 
             _plot_direction_umap(
                 Z_list, direction_labels, task_indices,

@@ -13,7 +13,7 @@ from typing import Dict, List, Optional
 import numpy as np
 import matplotlib.pyplot as plt
 
-from src.analysis._plot_utils import apply_paper_axis_style, sparse_ticks
+from src.analysis._plot_utils import SINGLE_FIGSIZE, apply_paper_axis_style, savefig_compact, sparse_ticks
 
 
 def plot_cnn_performance(exp_dir: str, output_dir: Optional[str] = None) -> None:
@@ -71,8 +71,9 @@ def _plot_matrix_heatmap(
     vmax: Optional[float] = None,
     cmap: str = "viridis",
 ) -> None:
-    fig, ax = plt.subplots(figsize=(9, 7))
-    im = ax.imshow(matrix, cmap=cmap, vmin=vmin, vmax=vmax, aspect="auto")
+    fig, ax = plt.subplots(figsize=SINGLE_FIGSIZE)
+    im = ax.imshow(matrix, cmap=cmap, vmin=vmin, vmax=vmax, aspect="equal")
+    ax.set_box_aspect(1)
 
     sp, sl = sparse_ticks(len(col_labels))
     ax.set_xticks(sp)
@@ -85,8 +86,7 @@ def _plot_matrix_heatmap(
     ax.set_ylabel("Evaluated Task")
     apply_paper_axis_style(ax)
 
-    plt.tight_layout()
-    plt.savefig(output_path)
+    savefig_compact(fig, output_path)
     print(f"    Saved {output_path}")
     plt.close()
 

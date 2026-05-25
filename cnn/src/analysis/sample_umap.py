@@ -26,9 +26,11 @@ from src.analysis._plot_utils import (
     AXIS_LABEL_SIZE,
     LEGEND_FONT_SIZE,
     LEGEND_TITLE_SIZE,
+    SINGLE_FIGSIZE,
     TICK_LABEL_SIZE,
     TITLE_SIZE,
     apply_paper_axis_style,
+    savefig_compact,
 )
 
 
@@ -85,6 +87,8 @@ def run_sample_umap(
         # --- 2. PCA (variance-threshold) ---
         pca_var_explained: Optional[float] = None
         pca_n_components: Optional[int] = None
+        pca_eigenvalues: Optional[np.ndarray] = None
+        pca_explained_ratio: Optional[np.ndarray] = None
         if pca_var_threshold > 0:
             from sklearn.decomposition import PCA
             print(f"    PCA: {X_all.shape[1]}D → {pca_var_threshold*100:.0f}% var threshold...")
@@ -99,6 +103,15 @@ def run_sample_umap(
             X_pca = pca.transform(X_all)[:, :k]
             pca_n_components = k
             pca_var_explained = float(cumvar[k - 1])
+            pca_eigenvalues = pca.explained_variance_
+            pca_explained_ratio = pca.explained_variance_ratio_
+            _plot_pca_diagnostics(
+                pca_eigenvalues,
+                pca_explained_ratio,
+                pca_n_components,
+                safe_name=layer.replace(".", "_").replace("/", "_"),
+                umap_dir=umap_dir,
+            )
             print(f"    PCA kept {pca_n_components} components, explained {pca_var_explained * 100:.1f}%")
         else:
             X_pca = X_all
@@ -142,6 +155,39 @@ def _pca_subtitle(pca_n_components: Optional[int], pca_var_explained: Optional[f
     if pca_n_components is None or pca_var_explained is None:
         return ""
     return f"PCA {pca_n_components}D: {pca_var_explained * 100:.1f}% var explained"
+
+
+def _plot_pca_diagnostics(
+    eigenvalues: np.ndarray,
+    explained_ratio: np.ndarray,
+    selected_k: int,
+    safe_name: str,
+    umap_dir: str,
+) -> None:
+    """Plot cumulative explained variance and PCA scree diagnostics."""
+    pcs = np.arange(1, len(eigenvalues) + 1)
+    cumvar = np.cumsum(explained_ratio)
+
+    fig, ax = plt.subplots(figsize=SINGLE_FIGSIZE)
+    ax.plot(pcs, cumvar, linewidth=2.5)
+    ax.axvline(selected_k, color="red", linestyle="--", linewidth=2, label=f"k={selected_k}")
+    ax.set_xlabel("Principal Component")
+    ax.set_ylabel("Cumulative Explained Variance")
+    ax.set_ylim(0, 1.02)
+    apply_paper_axis_style(ax, legend=True)
+    ax.grid(True, linestyle="--", alpha=0.5)
+    savefig_compact(fig, os.path.join(umap_dir, f"pca_explained_variance_{safe_name}.pdf"))
+    plt.close(fig)
+
+    fig, ax = plt.subplots(figsize=SINGLE_FIGSIZE)
+    ax.plot(pcs, eigenvalues, linewidth=2.5)
+    ax.axvline(selected_k, color="red", linestyle="--", linewidth=2, label=f"k={selected_k}")
+    ax.set_xlabel("Principal Component")
+    ax.set_ylabel("Eigenvalue")
+    apply_paper_axis_style(ax, legend=True)
+    ax.grid(True, linestyle="--", alpha=0.5)
+    savefig_compact(fig, os.path.join(umap_dir, f"pca_scree_{safe_name}.pdf"))
+    plt.close(fig)
 
 
 def _subsample_display_mask(
@@ -286,7 +332,7 @@ def _plot_by_class_paper_subset(
     pad_x = (x_max - x_min) * 0.05
     pad_y = (y_max - y_min) * 0.05
 
-    fig, axes = plt.subplots(1, 4, figsize=(16, 3.8))
+    fig, axes = plt.subplots(1, 4, figsize=(18, 4.2))
     for ax, (pos, label_num) in zip(axes, selected):
         z_disp = Z_list[pos][display_mask]
         labels_disp = labels_np[display_mask]
@@ -308,7 +354,8 @@ def _plot_by_class_paper_subset(
     ]
     fig.legend(
         handles=legend_handles,
-        loc="center right",
+        loc="center left",
+        bbox_to_anchor=(0.84, 0.5),
         fontsize=LEGEND_FONT_SIZE,
         framealpha=0.8,
         ncol=1,
@@ -321,7 +368,7 @@ def _plot_by_class_paper_subset(
         fig.text(0.5, 0.01, subtitle, ha="center", va="bottom", fontsize=TICK_LABEL_SIZE,
                  color="gray")
 
-    plt.tight_layout(rect=[0, 0.04, 0.88, 1])
+    plt.tight_layout(rect=[0, 0.04, 0.80, 1])
     out_path = os.path.join(umap_dir, f"umap_by_class_paper_{safe_layer}.pdf")
     plt.savefig(out_path)
     plt.close()

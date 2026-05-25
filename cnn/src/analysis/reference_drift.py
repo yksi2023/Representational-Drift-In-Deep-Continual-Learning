@@ -13,7 +13,12 @@ import numpy as np
 import torch
 
 from src.analysis.drift_metrics import compute_metrics
-from src.analysis._plot_utils import apply_paper_axis_style, sparse_value_ticks
+from src.analysis._plot_utils import (
+    SMALL_LEGEND_FONT_SIZE,
+    SMALL_LEGEND_TITLE_SIZE,
+    apply_paper_axis_style,
+    sparse_value_ticks,
+)
 
 
 def plot_drift_results(results: List[Dict], output_dir: str):
@@ -47,14 +52,28 @@ def plot_drift_results(results: List[Dict], output_dir: str):
     ax1.set_ylabel("Cosine Similarity")
     ax1.set_xticks(xticks)
     ax1.set_xticklabels(xticklabels)
-    apply_paper_axis_style(ax1, legend=True)
+    apply_paper_axis_style(
+        ax1,
+        legend=True,
+        legend_kwargs={
+            "fontsize": SMALL_LEGEND_FONT_SIZE,
+            "title_fontsize": SMALL_LEGEND_TITLE_SIZE,
+        },
+    )
     ax1.grid(True, linestyle="--", alpha=0.6)
 
     ax2.set_xlabel("Task Index")
     ax2.set_ylabel("L2 Distance")
     ax2.set_xticks(xticks)
     ax2.set_xticklabels(xticklabels)
-    apply_paper_axis_style(ax2, legend=True)
+    apply_paper_axis_style(
+        ax2,
+        legend=True,
+        legend_kwargs={
+            "fontsize": SMALL_LEGEND_FONT_SIZE,
+            "title_fontsize": SMALL_LEGEND_TITLE_SIZE,
+        },
+    )
     ax2.grid(True, linestyle="--", alpha=0.6)
 
     plt.tight_layout()

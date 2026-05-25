@@ -20,7 +20,14 @@ import torch
 import torch.nn.functional as F
 import matplotlib.pyplot as plt
 
-from src.analysis._plot_utils import apply_paper_axis_style, sparse_value_ticks
+from src.analysis._plot_utils import (
+    SMALL_LEGEND_FONT_SIZE,
+    SMALL_LEGEND_TITLE_SIZE,
+    WIDE_FIGSIZE,
+    apply_paper_axis_style,
+    savefig_compact,
+    sparse_value_ticks,
+)
 
 from src.analysis.reference_drift import _load_reps_from_npz
 
@@ -130,7 +137,7 @@ def _plot_correlation_vs_gap(
     output_path: str,
 ):
     """Plot Pearson correlation vs task gap for STPV, PV, ERV, TCV on one figure."""
-    fig, ax = plt.subplots(figsize=(10, 6))
+    fig, ax = plt.subplots(figsize=WIDE_FIGSIZE)
 
     colors = {"STPV": "#d62728", "PV": "#1f77b4", "ERV": "#ff7f0e", "TCV": "#2ca02c"}
     for vec_name in ["STPV", "PV", "ERV", "TCV"]:
@@ -141,15 +148,21 @@ def _plot_correlation_vs_gap(
     ax.set_xlabel("Task Gap")
     ax.set_ylabel("Pearson Correlation")
     ax.set_ylim(-0.1, 1.05)
-    apply_paper_axis_style(ax, legend=True)
+    apply_paper_axis_style(
+        ax,
+        legend=True,
+        legend_kwargs={
+            "fontsize": SMALL_LEGEND_FONT_SIZE,
+            "title_fontsize": SMALL_LEGEND_TITLE_SIZE,
+        },
+    )
     ax.grid(True, linestyle='--', alpha=0.6)
     if results["STPV"][0]:
         ticks, labels = sparse_value_ticks(results["STPV"][0])
         ax.set_xticks(ticks)
         ax.set_xticklabels(labels)
 
-    plt.tight_layout()
-    plt.savefig(output_path)
+    savefig_compact(fig, output_path)
     plt.close()
 
 
