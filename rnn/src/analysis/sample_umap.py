@@ -187,14 +187,15 @@ def _extract_epoch_reps(
     states: torch.Tensor,
     epoch_dict: Dict[str, Tuple[int, int]],
 ) -> Dict[str, np.ndarray]:
-    """Extract time-averaged hidden states per epoch + full STPV.
+    """Extract full STPV, epoch means, and selected last-timestep PVs.
 
     Args:
         states: (Seq_len, Batch, Hidden) tensor of hidden states.
         epoch_dict: {epoch_name: (start_t, end_t)}.
 
     Returns:
-        dict with keys like 'stpv', 'fix1', 'stim1', 'go1', etc.
+        dict with keys like 'stpv', 'fix1', 'stim1', 'go1', 'stim_last',
+        'go_last', etc.
         Each value is np.ndarray of shape (Batch, D).
     """
     # (Seq_len, Batch, Hidden) → (Batch, Seq_len, Hidden)
@@ -210,7 +211,37 @@ def _extract_epoch_reps(
         epoch_states = states_bth[:, t_start:t_end, :]  # (B, t_end-t_start, H)
         reps[epoch_name] = epoch_states.mean(dim=1).cpu().numpy()  # (B, H)
 
+    # Last-timestep population vectors for stimulus and go epochs.
+    # These are single hidden states h_t, not time-averaged epoch activity.
+    for prefix, out_name in (("stim", "stim_last"), ("go", "go_last")):
+        matching_epochs = [
+            (name, bounds) for name, bounds in epoch_dict.items()
+            if name.startswith(prefix)
+        ]
+        if not matching_epochs:
+            continue
+        _name, (_t_start, t_end) = matching_epochs[-1]
+        reps[out_name] = states_bth[:, t_end - 1, :].cpu().numpy()  # (B, H)
+
     return reps
+
+
+def _expected_last_rep_names(task_name: str) -> List[str]:
+    """Return cache-required last-timestep PV names for a Go-family task."""
+    names = ["go_last"]
+    if task_name in ("fdgo", "fdanti", "delaygo", "delayanti"):
+        names.insert(0, "stim_last")
+    return names
+
+
+def _last_rep_names_for_epoch_dict(epoch_dict: Dict[str, Tuple[int, int]]) -> List[str]:
+    """Return last-timestep PV representation names available for epochs."""
+    names = []
+    if any(name.startswith("stim") for name in epoch_dict):
+        names.append("stim_last")
+    if any(name.startswith("go") for name in epoch_dict):
+        names.append("go_last")
+    return names
 
 
 def _extract_or_load_umap_reps(
@@ -241,7 +272,11 @@ def _extract_or_load_umap_reps(
         # Convert epoch_names from ndarray back to list
         if 'epoch_names' in result:
             result['epoch_names'] = list(result['epoch_names'])
-        return result
+        epoch_names = result.get('epoch_names', [])
+        missing = [name for name in _expected_last_rep_names(probe_task) if name not in epoch_names]
+        if not missing:
+            return result
+        print(f"    Cached UMAP reps missing {missing}; re-extracting and updating cache.")
 
     # --- Not cached: extract from checkpoints ---
     if probe_task not in _GO_FAMILY:
@@ -264,7 +299,7 @@ def _extract_or_load_umap_reps(
     trial, direction_labels, epoch_dict = _build_controlled_trial(
         config, probe_task, directions, n_per_dir
     )
-    epoch_names = ['stpv'] + list(epoch_dict.keys())
+    epoch_names = ['stpv'] + list(epoch_dict.keys()) + _last_rep_names_for_epoch_dict(epoch_dict)
 
     # Reconstruct model shell
     model = _reconstruct_model(exp_config, config, device)

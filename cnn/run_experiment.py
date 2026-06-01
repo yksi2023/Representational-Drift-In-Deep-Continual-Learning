@@ -47,8 +47,8 @@ def main():
     parser.add_argument("--freeze_until", type=str, default=None,
                         help="Freeze all layers up to and including this one. Names differ per model.")
     parser.add_argument("--ewc_lambda", type=float, default=1000.0, help="EWC regularization strength (only used when method=ewc)")
-    parser.add_argument("--ewc_protect", type=str, default="first", choices=["first", "all"],
-                        help="EWC: protect 'first' task only or 'all' tasks (default: first)")
+    parser.add_argument("--ewc_protect", type=str, default="all", choices=["first", "all"],
+                        help="EWC: protect 'first' task only or 'all' tasks (default: all)")
     parser.add_argument("--lwf_lambda", type=float, default=1.0, help="LwF distillation strength (only used when method=lwf)")
     parser.add_argument("--lwf_temperature", type=float, default=2.0, help="LwF distillation temperature (only used when method=lwf)")
     parser.add_argument("--learning_mode", type=str, default="til", choices=["til", "cil"], help="Learning mode: 'til' (task-incremental, masked output) or 'cil' (class-incremental, full output)")

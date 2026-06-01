@@ -26,7 +26,7 @@ COMMON=(
     --num_iterations 5000
     --batch_size 1024
     --lr 0.001
-    --train_pool_size 50
+    --train_pool_size 30
     --seed 0
 )
 
@@ -46,9 +46,10 @@ T0=$(date +%s)
 
 run_one normal   --method normal
 run_one replay   --method replay --memory_per_task 300
-run_one ewc      --method ewc --ewc_lambda 100.0 --fisher_samples 200
-run_one lwf      --method lwf --lwf_lambda 1.0 --lwf_temperature 2.0
-run_one hypernet --method hypernet --hnet_beta 0.5 --hnet_chunks 10 --hnet_hidden 128
+# run_one ewc      --method ewc --ewc_lambda 100.0 --fisher_samples 200
+# run_one lwf      --method lwf --lwf_lambda 1.0 --lwf_temperature 2.0
+# run_one hypernet --method hypernet --hnet_beta 0.5 --hnet_chunks 10 --hnet_hidden 128
+run_one duncker  --method duncker --duncker_alpha 0.01 --duncker_samples 512
 
 printf 'TOTAL: %ds\n' $(( $(date +%s) - T0 )) | tee -a "${TIMING}"
 echo "Done. Run 'bash analysis_rnn.sh ${IDX}' for drift analysis."

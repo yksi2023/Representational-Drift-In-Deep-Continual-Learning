@@ -17,7 +17,7 @@ def main():
     parser.add_argument("--num_iterations", type=int, default=2000)
     parser.add_argument("--batch_size", type=int, default=64)
     parser.add_argument("--lr", type=float, default=0.001)
-    parser.add_argument("--method", type=str, default="normal", choices=["normal", "ewc", "replay", "lwf", "hypernet"])
+    parser.add_argument("--method", type=str, default="normal", choices=["normal", "ewc", "replay", "lwf", "hypernet", "duncker"])
     # EWC
     parser.add_argument("--ewc_lambda", type=float, default=100.0, help="EWC regularization strength")
     parser.add_argument("--fisher_samples", type=int, default=200, help="Samples for Fisher estimation")
@@ -33,6 +33,9 @@ def main():
     parser.add_argument("--hnet_hidden", type=int, default=128, help="Hypernetwork hidden layer width")
     parser.add_argument("--hnet_chunks", type=int, default=10, help="Number of weight chunks")
     parser.add_argument("--hnet_beta", type=float, default=0.01, help="Output regularisation strength")
+    # Duncker (Orthogonal Gradient Projection)
+    parser.add_argument("--duncker_alpha", type=float, default=0.01, help="Soft threshold for projection (smaller = stronger protection)")
+    parser.add_argument("--duncker_samples", type=int, default=512, help="Number of trials for covariance estimation after each task (actual samples M = trials × timesteps)")
     parser.add_argument("--tasks", type=str, nargs="+", default=DEFAULT_TASKS,
                         help=f"Task names to learn sequentially. Default: 18 tasks (excludes dmcgo/dmcnogo). Available: {DEFAULT_TASKS}")
     parser.add_argument("--early_stop_patience", type=int, default=500, help="Early stop if no improvement for this many iters (0=disable)")
@@ -110,6 +113,8 @@ def main():
         hnet_hidden=args.hnet_hidden,
         hnet_chunks=args.hnet_chunks,
         hnet_beta=args.hnet_beta,
+        duncker_alpha=args.duncker_alpha,
+        duncker_samples=args.duncker_samples,
     )
 
 

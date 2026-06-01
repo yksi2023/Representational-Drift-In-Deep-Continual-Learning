@@ -1,7 +1,7 @@
 import torch
 import json
 import os
-from abc import ABC, abstractmethod
+from abc import ABC
 from typing import Optional, Dict, Any, Tuple
 from src.eval import evaluate, comprehensive_evaluation
 from src.checkpoints import save_training_checkpoint
@@ -158,10 +158,112 @@ class BaseContinualMethod(ABC):
         """Hook called before training each task. Override in subclasses."""
         pass
     
-    @abstractmethod
-    def train_task(self, task_idx: int, train_loader, val_loader) -> None:
-        """Train on a single task. Must be implemented by subclasses."""
+    def _task_loss(self, outputs, labels, active_range):
+        """Cross-entropy on the active class slice (TIL) or full logits (CIL)."""
+        if active_range is not None:
+            start_cls, end_cls = active_range
+            return self.criterion(outputs[:, start_cls:end_cls], labels - start_cls)
+        return self.criterion(outputs, labels)
+
+    def compute_loss(self, outputs, labels, active_range, task_idx, inputs):
+        """Return (loss, components) for one batch.
+
+        Default is plain task loss. Subclasses add regularisation terms
+        (EWC penalty, LwF distillation, ...) and report extra components
+        for logging via the returned dict.
+        """
+        return self._task_loss(outputs, labels, active_range), {}
+
+    def on_after_backward(self) -> None:
+        """Hook run after backward() (and unscale under AMP), before grad
+        clipping / optimizer step. Override e.g. for gradient projection."""
         pass
+
+    def get_train_loader(self, task_idx: int, train_loader):
+        """Return the loader to iterate for this task. Override to mix in
+        extra data (e.g. a replay buffer)."""
+        return train_loader
+
+    def train_task(self, task_idx: int, train_loader, val_loader) -> None:
+        """Shared training loop. Subclasses customise behaviour via
+        compute_loss / on_after_backward / get_train_loader hooks rather
+        than reimplementing this loop."""
+        scheduler = self.create_scheduler()
+        early_stopper = EarlyStopping(
+            patience=self.early_stopping_patience,
+            min_delta=self.early_stopping_min_delta,
+        )
+        active_range = self.get_active_classes_range(task_idx)
+        loader = self.get_train_loader(task_idx, train_loader)
+
+        use_cuda_amp = bool(self.use_amp and (self.device.type == 'cuda'))
+        scaler = torch.amp.GradScaler() if use_cuda_amp else None
+
+        for epoch in range(self.epochs):
+            self.model.train()
+            running_loss = 0.0
+            running_components: Dict[str, float] = {}
+            num_batches = 0
+
+            for inputs, labels in loader:
+                inputs = inputs.to(self.device, non_blocking=True)
+                labels = labels.to(self.device, non_blocking=True)
+
+                self.optimizer.zero_grad(set_to_none=True)
+
+                if use_cuda_amp:
+                    with torch.amp.autocast(device_type=self.device.type):
+                        outputs = self.model(inputs)
+                        loss, components = self.compute_loss(
+                            outputs, labels, active_range, task_idx, inputs
+                        )
+                    scaler.scale(loss).backward()
+                    scaler.unscale_(self.optimizer)
+                    self.on_after_backward()
+                    torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=5.0)
+                    scaler.step(self.optimizer)
+                    scaler.update()
+                else:
+                    outputs = self.model(inputs)
+                    loss, components = self.compute_loss(
+                        outputs, labels, active_range, task_idx, inputs
+                    )
+                    loss.backward()
+                    self.on_after_backward()
+                    torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=5.0)
+                    self.optimizer.step()
+
+                running_loss += loss.item()
+                for k, v in components.items():
+                    running_components[k] = running_components.get(k, 0.0) + v
+                num_batches += 1
+
+            denom = max(1, num_batches)
+            epoch_loss = running_loss / denom
+            log_parts = [f"Loss: {epoch_loss:.4f}"]
+            for k, v in running_components.items():
+                log_parts.append(f"{k}: {v / denom:.6f}")
+            print(f"Epoch [{epoch+1}/{self.epochs}], " + ", ".join(log_parts))
+
+            # Validation and early stopping
+            val_loss = None
+            if val_loader is not None:
+                val_loss, val_acc = evaluate(
+                    self.model, val_loader, self.criterion, self.device,
+                    active_classes_range=active_range,
+                )
+                print(f"Validation - Loss: {val_loss:.4f}, Acc: {val_acc:.2f}%")
+
+            self.step_scheduler(scheduler, val_loss)
+            if scheduler is not None:
+                print(f"Current LR: {self.optimizer.param_groups[0]['lr']:.6f}")
+
+            if val_loader is not None and early_stopper.step(self.model, val_loss):
+                print(f"Early stopping triggered at epoch {epoch+1}")
+                break
+
+        if val_loader is not None:
+            early_stopper.restore(self.model)
     
     def after_task(self, task_idx: int, train_loader) -> None:
         """Hook called after training each task. Override in subclasses."""

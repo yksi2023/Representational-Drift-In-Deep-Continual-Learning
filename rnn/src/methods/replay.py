@@ -2,7 +2,6 @@ import random
 import torch
 from src.methods.base import BaseMethod
 from src.train import compute_loss
-from src.checkpoints import save_model
 
 
 class ReplayMethod(BaseMethod):
@@ -38,48 +37,23 @@ class ReplayMethod(BaseMethod):
         optimizer.step()
         return loss.item()
 
-    def run(self):
-        """Override run to inject replay trials into the training loop."""
-        self.model.to(self.device)
+    def before_task(self, task_idx, task_name, task_gen_fn):
+        """Log replay memory state at the start of each task."""
+        if self.memory:
+            total_mem = sum(len(v) for v in self.memory.values())
+            print(f"  Replay memory: {total_mem} trials from {len(self.memory)} past tasks")
 
-        for task_idx, (task_name, task_gen_fn) in enumerate(self.tasks):
-            print(f"\n{'='*50}")
-            print(f"Task {task_idx + 1}/{len(self.tasks)}: {task_name}")
-            if self.memory:
-                total_mem = sum(len(v) for v in self.memory.values())
-                print(f"  Replay memory: {total_mem} trials from {len(self.memory)} past tasks")
-            print(f"{'='*50}")
-
-            self.before_task(task_idx, task_name, task_gen_fn)
-
-            optimizer = torch.optim.Adam(self.model.parameters(), lr=self.lr)
-            train_pool = self.fixed_train_sets[task_name]
-            past_tasks = list(self.memory.keys())
-
-            for i in range(self.num_iterations):
-                trial = train_pool[i % self.train_pool_size]
-
-                # Sample a subset of past tasks (not all) for efficiency
-                if past_tasks:
-                    k = min(self.replay_num_tasks, len(past_tasks))
-                    sampled = random.sample(past_tasks, k)
-                    replay_trials = [random.choice(self.memory[pt]) for pt in sampled]
-                    loss = self._replay_train_step(optimizer, trial, replay_trials)
-                else:
-                    loss = self.train_step(optimizer, trial)
-
-                if (i + 1) % 200 == 0:
-                    print(f"  Iter {i+1}/{self.num_iterations}, Loss: {loss:.4f}")
-
-            self.after_task(task_idx, task_name, task_gen_fn)
-
-            # Reuse base class eval + checkpoint
-            self._evaluate_and_record(task_idx, task_name)
-            save_model(self.model, self.save_dir, task_idx, extra_metadata={'task_name': task_name})
-
-        self._save_results()
-        print(f"\nSequential learning complete. Results saved in {self.save_dir}")
-        return self.performance_history, self.representations_history
+    def _train_one_step(self, optimizer, train_pool, i):
+        """Inject replay trials while keeping the base early-stopping loop."""
+        trial = train_pool[i % self.train_pool_size]
+        past_tasks = list(self.memory.keys())
+        if past_tasks:
+            # Sample a subset of past tasks (not all) for efficiency
+            k = min(self.replay_num_tasks, len(past_tasks))
+            sampled = random.sample(past_tasks, k)
+            replay_trials = [random.choice(self.memory[pt]) for pt in sampled]
+            return self._replay_train_step(optimizer, trial, replay_trials)
+        return self.train_step(optimizer, trial)
 
     def after_task(self, task_idx, task_name, task_gen_fn):
         """Store a random subset of training trials into replay memory."""

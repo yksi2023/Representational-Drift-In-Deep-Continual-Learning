@@ -6,3 +6,4 @@ numpy
 scikit-learn
 scipy
 timm>=0.9.0
+umap-learn

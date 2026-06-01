@@ -3,6 +3,7 @@ from src.methods.ewc import EWCMethod
 from src.methods.replay import ReplayMethod
 from src.methods.lwf import LwFMethod
 from src.methods.hypernet import HyperNetMethod
+from src.methods.duncker import DunckerMethod
 
 _METHOD_MAP = {
     'normal': NormalMethod,
@@ -10,6 +11,7 @@ _METHOD_MAP = {
     'replay': ReplayMethod,
     'lwf': LwFMethod,
     'hypernet': HyperNetMethod,
+    'duncker': DunckerMethod,
 }
 
 def get_method(name: str):

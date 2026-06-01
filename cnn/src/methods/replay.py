@@ -1,11 +1,9 @@
 import torch
-import tqdm
 import random
 import os
 from typing import Dict, Any, Optional
 from src.methods.base import BaseContinualMethod
-from src.eval import evaluate
-from src.utils import EarlyStopping, update_memory
+from src.utils import update_memory
 
 
 class ReplayMethod(BaseContinualMethod):
@@ -50,86 +48,12 @@ class ReplayMethod(BaseContinualMethod):
         end_class = (task_idx + 1) * self.increment
         return (0, end_class)
     
-    def train_task(self, task_idx: int, train_loader, val_loader) -> None:
-        """Train using replay of stored samples."""
-        # Get current task dataset (not loader) for combining with memory
+    def get_train_loader(self, task_idx: int, train_loader):
+        """Iterate over current-task data combined with the replay buffer."""
         start_class = task_idx * self.increment
         end_class = start_class + self.increment
         train_set = self.experiment_dataset.get_set(mode='train', label=range(start_class, end_class))
-        
-        scheduler = self.create_scheduler()
-        early_stopper = EarlyStopping(
-            patience=self.early_stopping_patience,
-            min_delta=self.early_stopping_min_delta
-        )
-        active_range = self.get_active_classes_range(task_idx)
-        
-        # Create combined loader with memory
-        combined_loader = self._create_combined_loader(train_set)
-        
-        use_cuda_amp = bool(self.use_amp and (self.device.type == 'cuda'))
-        scaler = torch.amp.GradScaler() if use_cuda_amp else None
-        
-        for epoch in range(self.epochs):
-            self.model.train()
-            running_loss = 0.0
-            progress_bar = tqdm.tqdm(combined_loader, desc=f"Epoch {epoch+1}/{self.epochs}", disable=True)
-            
-            for inputs, labels in progress_bar:
-                inputs = inputs.to(self.device, non_blocking=True)
-                labels = labels.to(self.device, non_blocking=True)
-                
-                self.optimizer.zero_grad(set_to_none=True)
-                
-                if use_cuda_amp:
-                    with torch.amp.autocast(device_type=self.device.type):
-                        outputs = self.model(inputs)
-                        if active_range is not None:
-                            start_cls, end_cls = active_range
-                            loss = self.criterion(outputs[:, start_cls:end_cls], labels - start_cls)
-                        else:
-                            loss = self.criterion(outputs, labels)
-                    scaler.scale(loss).backward()
-                    scaler.unscale_(self.optimizer)
-                    torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=5.0)
-                    scaler.step(self.optimizer)
-                    scaler.update()
-                else:
-                    outputs = self.model(inputs)
-                    if active_range is not None:
-                        start_cls, end_cls = active_range
-                        loss = self.criterion(outputs[:, start_cls:end_cls], labels - start_cls)
-                    else:
-                        loss = self.criterion(outputs, labels)
-                    loss.backward()
-                    torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=5.0)
-                    self.optimizer.step()
-                
-                running_loss += loss.item()
-                progress_bar.set_postfix(loss=running_loss / (progress_bar.n + 1))
-            
-            epoch_loss = running_loss / len(combined_loader)
-            print(f"Epoch [{epoch+1}/{self.epochs}], Loss: {epoch_loss:.4f}")
-            
-            # Validation and early stopping
-            val_loss = None
-            if val_loader is not None:
-                val_loss, val_acc = evaluate(
-                    self.model, val_loader, self.criterion, self.device,
-                    active_classes_range=active_range
-                )
-                print(f"Validation - Loss: {val_loss:.4f}, Acc: {val_acc:.2f}%")
-
-            self.step_scheduler(scheduler, val_loss)
-            if scheduler is not None:
-                print(f"Current LR: {self.optimizer.param_groups[0]['lr']:.6f}")
-
-            if val_loader is not None and early_stopper.step(self.model, val_loss):
-                print(f"Early stopping triggered at epoch {epoch+1}")
-                break
-        
-        if val_loader is not None:
-            early_stopper.restore(self.model)
+        return self._create_combined_loader(train_set)
     
     def after_task(self, task_idx: int, train_loader) -> None:
         """Update memory after training each task."""

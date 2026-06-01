@@ -110,8 +110,7 @@ class BaseMethod:
             best_model_state = None
             patience_counter = 0
             for i in range(self.num_iterations):
-                trial = train_pool[i % self.train_pool_size]
-                loss = self.train_step(optimizer, trial)
+                loss = self._train_one_step(optimizer, train_pool, i)
 
                 # Early stopping check
                 if self.early_stop_patience > 0:
@@ -193,6 +192,15 @@ class BaseMethod:
         print(f"Representations saved to {reps_dir}/")
 
     # ------------------------------------------------------------------
+
+    def _train_one_step(self, optimizer, train_pool, i):
+        """Run a single training iteration of the main loop.
+
+        Override this (instead of run()) to inject extra losses such as
+        replay, so the shared early-stopping logic is preserved.
+        """
+        trial = train_pool[i % self.train_pool_size]
+        return self.train_step(optimizer, trial)
 
     def train_step(self, optimizer, trial):
         """Single training step. Subclasses can override to add penalties."""

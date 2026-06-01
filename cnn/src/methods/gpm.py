@@ -1,10 +1,7 @@
 import torch
 import torch.nn.functional as F
-import tqdm
 from typing import Dict, Any, Optional
 from src.methods.base import BaseContinualMethod
-from src.eval import evaluate
-from src.utils import EarlyStopping
 
 
 class GPMMethod(BaseContinualMethod):
@@ -55,84 +52,10 @@ class GPMMethod(BaseContinualMethod):
                     grad_2d = grad_2d - proj
                     module.weight.grad.data = grad_2d.reshape(original_shape)
     
-    def train_task(self, task_idx: int, train_loader, val_loader) -> None:
-        """Train with gradient projection."""
-        scheduler = self.create_scheduler()
-        early_stopper = EarlyStopping(
-            patience=self.early_stopping_patience,
-            min_delta=self.early_stopping_min_delta
-        )
-        active_range = self.get_active_classes_range(task_idx)
-        
-        use_cuda_amp = bool(self.use_amp and (self.device.type == 'cuda'))
-        scaler = torch.amp.GradScaler() if use_cuda_amp else None
-        
-        for epoch in range(self.epochs):
-            self.model.train()
-            running_loss = 0.0
-            progress_bar = tqdm.tqdm(train_loader, desc=f"Epoch {epoch+1}/{self.epochs}", disable=True)
-            
-            for inputs, labels in progress_bar:
-                inputs = inputs.to(self.device, non_blocking=True)
-                labels = labels.to(self.device, non_blocking=True)
-                
-                self.optimizer.zero_grad(set_to_none=True)
-                
-                if use_cuda_amp:
-                    with torch.amp.autocast(device_type=self.device.type):
-                        outputs = self.model(inputs)
-                        if active_range is not None:
-                            start_cls, end_cls = active_range
-                            loss = self.criterion(outputs[:, start_cls:end_cls], labels - start_cls)
-                        else:
-                            loss = self.criterion(outputs, labels)
-                    scaler.scale(loss).backward()
-                    scaler.unscale_(self.optimizer)
-                    
-                    self._project_gradient()
-                    
-                    torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=5.0)
-                    scaler.step(self.optimizer)
-                    scaler.update()
-                else:
-                    outputs = self.model(inputs)
-                    if active_range is not None:
-                        start_cls, end_cls = active_range
-                        loss = self.criterion(outputs[:, start_cls:end_cls], labels - start_cls)
-                    else:
-                        loss = self.criterion(outputs, labels)
-                    loss.backward()
-                    
-                    self._project_gradient()
-                    
-                    torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=5.0)
-                    self.optimizer.step()
-                
-                running_loss += loss.item()
-                progress_bar.set_postfix(loss=running_loss / (progress_bar.n + 1))
-            
-            epoch_loss = running_loss / len(train_loader)
-            print(f"Epoch [{epoch+1}/{self.epochs}], Loss: {epoch_loss:.4f}")
-            
-            # Validation and early stopping
-            val_loss = None
-            if val_loader is not None:
-                val_loss, val_acc = evaluate(
-                    self.model, val_loader, self.criterion, self.device,
-                    active_classes_range=active_range
-                )
-                print(f"Validation - Loss: {val_loss:.4f}, Acc: {val_acc:.2f}%")
-
-            self.step_scheduler(scheduler, val_loss)
-            if scheduler is not None:
-                print(f"Current LR: {self.optimizer.param_groups[0]['lr']:.6f}")
-
-            if val_loader is not None and early_stopper.step(self.model, val_loss):
-                print(f"Early stopping triggered at epoch {epoch+1}")
-                break
-        
-        if val_loader is not None:
-            early_stopper.restore(self.model)
+    def on_after_backward(self) -> None:
+        """Project the accumulated gradients onto the orthogonal complement
+        of the stored GPM feature space before the optimizer step."""
+        self._project_gradient()
     
     def after_task(self, task_idx: int, train_loader) -> None:
         """Update GPM memory after each task."""
@@ -166,7 +89,15 @@ class GPMMethod(BaseContinualMethod):
                 activations[name].append(inp.detach().cpu())
             return hook
         
+        # In TIL mode, skip the classifier head (each task uses a different
+        # output slice; projecting its gradients would unnecessarily constrain
+        # new-task head learning).
+        classifier_name = 'fc'  # all CNN models use self.fc as the classifier
+        skip_names = {classifier_name} if self.learning_mode == 'til' else set()
+
         for name, module in self.model.named_modules():
+            if name in skip_names:
+                continue
             if isinstance(module, (torch.nn.Linear, torch.nn.Conv2d)):
                 layer_map[name] = module
                 hook = module.register_forward_hook(get_activation(name))
@@ -227,26 +158,37 @@ class GPMMethod(BaseContinualMethod):
         for name, rep_matrix in rep_dict.items():
             rep_matrix = rep_matrix.float()
             
+            # Record original energy before projecting out old subspace
+            original_energy = (rep_matrix ** 2).sum().item()
+
             if self.gpm_memory is not None and name in self.gpm_memory:
                 existing_basis = self.gpm_memory[name].cpu()
                 proj = rep_matrix @ existing_basis @ existing_basis.T
-                rep_matrix = rep_matrix - proj
-            
+                existing_energy = (proj ** 2).sum().item()
+                residual = rep_matrix - proj
+
+                # If old basis already covers enough, skip SVD entirely
+                if existing_energy >= self.gpm_threshold * original_energy:
+                    updated_memory[name] = existing_basis
+                    continue
+            else:
+                residual = rep_matrix
+                existing_energy = 0.0
+
             try:
-                mean = rep_matrix.mean(dim=0, keepdim=True)
-                centered = rep_matrix - mean
-                
-                U, S, Vh = torch.linalg.svd(centered, full_matrices=False)
-                
-                total_var = (S ** 2).sum()
+                # No mean-centering: SVD on raw representations (matches GPM paper)
+                U, S, Vh = torch.linalg.svd(residual, full_matrices=False)
+
+                # Select k so that (existing_energy + new component energy)
+                # >= threshold * original_energy
+                needed_energy = self.gpm_threshold * original_energy - existing_energy
                 cumsum = torch.cumsum(S ** 2, dim=0)
-                k = (cumsum < self.gpm_threshold * total_var).sum().item() + 1
-                k = max(1, min(k, S.size(0), rep_matrix.size(1)))
-                
+                k = (cumsum < needed_energy).sum().item() + 1
+                k = max(1, min(k, S.size(0), residual.size(1)))
+
                 new_basis = Vh[:k].T
-                
+
                 if self.gpm_memory is not None and name in self.gpm_memory:
-                    existing_basis = self.gpm_memory[name].cpu()
                     combined = torch.cat([existing_basis, new_basis], dim=1)
                     Q, R = torch.linalg.qr(combined)
                     diag = torch.abs(torch.diag(R))

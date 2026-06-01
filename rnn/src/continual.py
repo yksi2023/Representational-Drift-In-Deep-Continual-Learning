@@ -26,6 +26,8 @@ def sequential_learning(
     hnet_hidden=128,
     hnet_chunks=10,
     hnet_beta=0.01,
+    duncker_alpha=0.001,
+    duncker_samples=1024,
 ):
     """
     Train the model sequentially on cognitive tasks.
@@ -93,6 +95,11 @@ def sequential_learning(
             'hnet_hidden': hnet_hidden,
             'hnet_chunks': hnet_chunks,
             'hnet_beta': hnet_beta,
+        }
+    elif m == 'duncker':
+        method_kwargs = {
+            'duncker_alpha': duncker_alpha,
+            'duncker_samples': duncker_samples,
         }
 
     method_cls = get_method(method)
