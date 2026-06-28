@@ -18,7 +18,7 @@ def main():
     parser.add_argument("--lr", type=float, default=0.1)
     parser.add_argument("--optimizer", type=str, default="sgd", choices=["sgd", "adam"])
     parser.add_argument("--momentum", type=float, default=0.9)
-    parser.add_argument("--method", type=str, default="normal", choices=["normal", "replay", "ewc", "gpm", "lwf"])
+    parser.add_argument("--method", type=str, default="normal", choices=["normal", "replay", "anchored_replay", "ewc", "gpm", "lwf"])  # [exp-b] anchored_replay
     parser.add_argument("--memory_size", type=int, default=5000,
                         help="Total replay buffer budget (used only when --memory_per_class is unset).")
     parser.add_argument("--memory_per_class", type=int, default=None,
@@ -51,6 +51,17 @@ def main():
                         help="EWC: protect 'first' task only or 'all' tasks (default: all)")
     parser.add_argument("--lwf_lambda", type=float, default=1.0, help="LwF distillation strength (only used when method=lwf)")
     parser.add_argument("--lwf_temperature", type=float, default=2.0, help="LwF distillation temperature (only used when method=lwf)")
+    # [exp-b] Representation-anchoring penalty (Experiment B; method=anchored_replay)
+    parser.add_argument("--anchor_lambda", type=float, default=0.0,
+                        help="Strength of the representation-anchoring penalty (Eq. 23). 0 = plain replay.")
+    parser.add_argument("--anchor_layers", type=str, default="layer3,layer4",
+                        help="Comma-separated layer names the anchoring penalty is applied to.")
+    parser.add_argument("--anchor_loss", type=str, default="mse", choices=["mse", "cosine"],
+                        help="Per-layer anchor distance: 'mse' (normalized squared L2, Eq. 23) or 'cosine' (1-cos).")
+    parser.add_argument("--anchor_probe_size", type=int, default=256,
+                        help="Number of fixed task-1 probe samples used by the anchoring penalty.")
+    parser.add_argument("--anchor_probe_mode", type=str, default="test", choices=["train", "val", "test"],
+                        help="Dataset split the anchor probe set is drawn from.")
     parser.add_argument("--learning_mode", type=str, default="til", choices=["til", "cil"], help="Learning mode: 'til' (task-incremental, masked output) or 'cil' (class-incremental, full output)")
     parser.add_argument("--scheduler", type=str, default="plateau",
                         choices=["plateau", "cosine", "none"],
@@ -193,6 +204,12 @@ def main():
         ewc_protect=args.ewc_protect,
         lwf_lambda=args.lwf_lambda,
         lwf_temperature=args.lwf_temperature,
+        # [exp-b] anchoring penalty pass-through
+        anchor_lambda=args.anchor_lambda,
+        anchor_layers=args.anchor_layers,
+        anchor_loss=args.anchor_loss,
+        anchor_probe_size=args.anchor_probe_size,
+        anchor_probe_mode=args.anchor_probe_mode,
         learning_mode=args.learning_mode,
     )
 

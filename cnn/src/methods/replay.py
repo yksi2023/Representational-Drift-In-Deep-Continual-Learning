@@ -74,7 +74,7 @@ class ReplayMethod(BaseContinualMethod):
         """Create a DataLoader combining current task data with memory."""
         use_cuda = torch.cuda.is_available()
         cpu_count = os.cpu_count() or 2
-        num_workers = max(2, min(8, cpu_count // 2))
+        num_workers = int(os.environ.get("_DATALOADER_NUM_WORKERS", 0)) or max(2, min(8, cpu_count // 2))
         loader_kwargs = {
             "batch_size": self.batch_size,
             "shuffle": True,

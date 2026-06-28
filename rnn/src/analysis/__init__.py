@@ -2,7 +2,7 @@ import matplotlib
 import matplotlib.pyplot as plt
 
 # Global plot style configuration — paper-ready
-matplotlib.rcParams['font.family'] = 'Arial'
+matplotlib.rcParams['font.family'] = 'Liberation Sans'
 matplotlib.rcParams['font.size'] = 14
 plt.rcParams.update({
     'figure.dpi': 150,

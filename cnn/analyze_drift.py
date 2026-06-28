@@ -26,10 +26,13 @@ from src.analysis import (
     run_reference_drift,
     run_model_similarity,
     run_sample_similarity,
+    run_sample_similarity_evolution,
     run_subspace_drift,
     run_gap_drift,
     plot_cnn_performance,
     run_sample_umap,
+    run_network_health,   # [exp-b]
+    run_subspace_overlap,  # [exp-b]
 )
 from src.eval import plot_performance_from_files
 from datasets import build_dataset
@@ -57,6 +60,12 @@ def parse_args():
                         help="Skip per-task activation histograms in reference drift")
     parser.add_argument("--skip_umap", action="store_true",
                         help="Skip sample UMAP visualization")
+    parser.add_argument("--skip_model_sim", action="store_true",
+                        help="Skip model pairwise cosine similarity (not needed for report)")
+    parser.add_argument("--skip_gap_drift", action="store_true",
+                        help="Skip gap-based vector drift analysis (not needed for report)")
+    parser.add_argument("--skip_performance", action="store_true",
+                        help="Skip performance plots (not needed for report)")
     parser.add_argument("--umap_color_by", type=str, default="class",
                         choices=["class", "checkpoint"],
                         help="Color UMAP points by class label or checkpoint index")
@@ -64,6 +73,13 @@ def parse_args():
                         help="Keep PCA components explaining this fraction of variance before UMAP (0 to skip PCA)")
     parser.add_argument("--umap_trajectory", action="store_true",
                         help="Draw trajectory lines connecting same sample across checkpoints")
+    # [exp-b] network-health + subspace-overlap options
+    parser.add_argument("--skip_health", action="store_true",
+                        help="Skip network-health metrics (dead-unit fraction, participation ratio)")
+    parser.add_argument("--skip_subspace_overlap", action="store_true",
+                        help="Skip cross-task coding-subspace overlap (re-extracts per-task reps)")
+    parser.add_argument("--overlap_pca_var", type=float, default=0.90,
+                        help="Variance threshold defining each task's coding subspace for overlap")
     return parser.parse_args()
 
 
@@ -129,12 +145,13 @@ def setup_environment(args):
     if not ckpts:
         raise SystemExit(f"No checkpoints found in {args.ckpt_dir}")
 
-    return model, probe_loader, layer_names, device
+    # [exp-b] data_manager + increment are returned for the subspace-overlap step
+    return model, probe_loader, layer_names, device, data_manager, increment
 
 
 def main():
     args = parse_args()
-    model, probe_loader, layer_names, device = setup_environment(args)
+    model, probe_loader, layer_names, device, data_manager, increment = setup_environment(args)  # [exp-b] +data_manager,increment
 
     print("=" * 60)
     print("DRIFT ANALYSIS")
@@ -169,24 +186,34 @@ def main():
     )
 
     # 2. Model pairwise cosine similarity
-    print("\n[2/6] Running model similarity analysis...")
-    run_model_similarity(
-        reps_cache=reps_cache,
-        layer_names=layer_names,
-        output_dir=args.output_dir,
-    )
+    if not args.skip_model_sim:
+        print("\n[2/6] Running model similarity analysis...")
+        run_model_similarity(
+            reps_cache=reps_cache,
+            layer_names=layer_names,
+            output_dir=args.output_dir,
+        )
+    else:
+        print("\n[2/6] Skipping model similarity (--skip_model_sim).")
 
-    # 3. Sample-wise similarity  [disabled]
-    # if not args.skip_sample_sim:
-    #     print("\n[3/6] Running sample similarity analysis...")
-    #     run_sample_similarity(
-    #         reps_cache=reps_cache,
-    #         labels=labels,
-    #         layer_names=layer_names,
-    #         output_dir=args.output_dir,
-    #     )
-    # else:
-    #     print("\n[3/6] Skipping sample similarity (--skip_sample_sim).")
+    # 3. Sample-wise similarity
+    if not args.skip_sample_sim:
+        print("\n[3/6] Running sample similarity analysis...")
+        run_sample_similarity(
+            reps_cache=reps_cache,
+            labels=labels,
+            layer_names=layer_names,
+            output_dir=args.output_dir,
+        )
+        print("\n[3b/6] Running sample similarity evolution (CKA & Frobenius)...")
+        run_sample_similarity_evolution(
+            reps_cache=reps_cache,
+            labels=labels,
+            layer_names=layer_names,
+            output_dir=args.output_dir,
+        )
+    else:
+        print("\n[3/6] Skipping sample similarity (--skip_sample_sim).")
 
     # 4. Coding / null subspace drift decomposition  [disabled]
     # print("\n[4/6] Running coding/null subspace drift analysis...")
@@ -213,23 +240,54 @@ def main():
         print("\n[4b/6] Skipping sample UMAP (--skip_umap).")
 
     # 5. Gap-based vector drift (Sample-PV Pearson vs task gap)
-    print("\n[5/6] Running gap-based vector drift analysis...")
-    run_gap_drift(
-        reps_cache=reps_cache,
-        layer_names=layer_names,
-        output_dir=args.output_dir,
-    )
+    if not args.skip_gap_drift:
+        print("\n[5/6] Running gap-based vector drift analysis...")
+        run_gap_drift(
+            reps_cache=reps_cache,
+            layer_names=layer_names,
+            output_dir=args.output_dir,
+        )
+    else:
+        print("\n[5/6] Skipping gap-based drift (--skip_gap_drift).")
+
+    # 5b. [exp-b] Network health (dead-unit fraction + participation ratio)
+    if not args.skip_health:
+        print("\n[5b] Running network-health analysis...")
+        run_network_health(
+            reps_cache=reps_cache,
+            layer_names=layer_names,
+            output_dir=args.output_dir,
+        )
+    else:
+        print("\n[5b] Skipping network-health (--skip_health).")
+
+    # 5c. [exp-b] Cross-task coding-subspace overlap (reuses reps_cache, no extra forward)
+    if not args.skip_subspace_overlap:
+        print("\n[5c] Running cross-task subspace-overlap analysis...")
+        run_subspace_overlap(
+            reps_cache=reps_cache,
+            labels=labels,
+            layer_names=layer_names,
+            increment=increment,
+            output_dir=args.output_dir,
+            var_threshold=args.overlap_pca_var,
+        )
+    else:
+        print("\n[5c] Skipping subspace overlap (--skip_subspace_overlap).")
 
     # 6. Performance plots (line plots + task x stage accuracy heatmap)
-    print("\n[6/6] Generating performance plots...")
-    try:
-        plot_performance_from_files(args.ckpt_dir, args.output_dir)
-    except FileNotFoundError as e:
-        print(f"  Skipping line plots: {e}")
-    try:
-        plot_cnn_performance(args.ckpt_dir, args.output_dir)
-    except FileNotFoundError as e:
-        print(f"  Skipping accuracy matrix: {e}")
+    if not args.skip_performance:
+        print("\n[6/6] Generating performance plots...")
+        try:
+            plot_performance_from_files(args.ckpt_dir, args.output_dir)
+        except FileNotFoundError as e:
+            print(f"  Skipping line plots: {e}")
+        try:
+            plot_cnn_performance(args.ckpt_dir, args.output_dir)
+        except FileNotFoundError as e:
+            print(f"  Skipping accuracy matrix: {e}")
+    else:
+        print("\n[6/6] Skipping performance plots (--skip_performance).")
 
     print("\n" + "=" * 60)
     print("ANALYSIS COMPLETE")

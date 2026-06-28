@@ -95,7 +95,7 @@ class IncrementalFashionMNIST:
         # dataloader performance defaults
         use_cuda = torch.cuda.is_available()
         cpu_count = os.cpu_count() or 2
-        num_workers = max(2, min(8, cpu_count // 2))
+        num_workers = int(os.environ.get("_DATALOADER_NUM_WORKERS", 0)) or max(2, min(8, cpu_count // 2))
         loader_kwargs = {
             "batch_size": batch_size,
             "shuffle": shuffle,
@@ -219,7 +219,7 @@ class IncrementalTinyImageNet:
         # dataloader performance defaults
         use_cuda = torch.cuda.is_available()
         cpu_count = os.cpu_count() or 2
-        num_workers = max(2, min(8, cpu_count // 2))
+        num_workers = int(os.environ.get("_DATALOADER_NUM_WORKERS", 0)) or max(2, min(8, cpu_count // 2))
         loader_kwargs = {
             "batch_size": batch_size,
             "shuffle": shuffle,
@@ -354,7 +354,7 @@ class IncrementalCIFAR100:
 
         use_cuda = torch.cuda.is_available()
         cpu_count = os.cpu_count() or 2
-        num_workers = max(2, min(8, cpu_count // 2))
+        num_workers = int(os.environ.get("_DATALOADER_NUM_WORKERS", 0)) or max(2, min(8, cpu_count // 2))
         loader_kwargs = {
             "batch_size": batch_size,
             "shuffle": shuffle,
@@ -486,7 +486,7 @@ class IncrementalImageNet21kP200:
 
         use_cuda = torch.cuda.is_available()
         cpu_count = os.cpu_count() or 2
-        num_workers = max(2, min(8, cpu_count // 2))
+        num_workers = int(os.environ.get("_DATALOADER_NUM_WORKERS", 0)) or max(2, min(8, cpu_count // 2))
         loader_kwargs = {
             "batch_size": batch_size,
             "shuffle": shuffle,
@@ -609,7 +609,7 @@ class IncrementalImageNet1k:
 
         use_cuda = torch.cuda.is_available()
         cpu_count = os.cpu_count() or 2
-        num_workers = max(2, min(8, cpu_count // 2))
+        num_workers = int(os.environ.get("_DATALOADER_NUM_WORKERS", 0)) or max(2, min(8, cpu_count // 2))
 
         loader_kwargs = {
             "batch_size": batch_size,

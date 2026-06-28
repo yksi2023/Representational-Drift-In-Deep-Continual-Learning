@@ -1,17 +1,20 @@
 #!/usr/bin/env bash
-#SBATCH --job-name=cnn_train
+#SBATCH --job-name=expB_train
 #SBATCH --partition=gpu_4090
 #SBATCH --gpus=4
 #SBATCH --output=logs/%x_%j.out
 #
-# Train all CL methods for CNN on ImageNet-1K subset (ResNet18 GN, from scratch).
-# 5 classes per task × 20 tasks = 100 classes (first 100 of 200).
-# Dataset prep: python cnn/tools/process_imagenet.py
-# Results: cnn/experiments/exp<i>_cnn_<method>_seed<s>/
+# Experiment B (CNN) -- multi-GPU parallel training.
+#
+# Trains both arms over a lambda grid x seeds:
+#   * replay,          anchor_lambda = 0   (weights free, code drifts)
+#   * anchored_replay, anchor_lambda > 0   (weights free, code pinned)
+#
+# Results: cnn/experiments/exp<i>b_cnn_<arm>_seed<s>/
 #
 # Submit:
-#   sbatch cnn.sh 1 --seeds 0,1,2,3,4
-#   sbatch --partition gpu_5090 --gpus 8 cnn.sh 1 --seeds 0,1,2,3,4
+#   sbatch b_train.sh 1
+#   sbatch --partition gpu_5090 --gpus 8 b_train.sh 1 --seeds 0,1,2 --lambdas 0.01,0.1,1
 #
 # -----------------------------------------------------------------------------
 set -euo pipefail
@@ -20,18 +23,19 @@ module load miniforge3/26.1
 source activate drift
 
 # --------------- argument parsing ---------------
-if [ $# -lt 1 ] || [[ "$1" == --* ]]; then
-    echo "Usage: sbatch [slurm opts] cnn.sh <i> [--seeds s1,s2,...]"
-    echo "  <i> is the experiment index, e.g.: sbatch cnn.sh 1 --seeds 0,1,2,3,4"
+if [ $# -lt 1 ]; then
+    echo "Usage: sbatch [slurm opts] b_train.sh <i> [--seeds s1,s2,...] [--lambdas l1,l2,...]"
     exit 1
 fi
 IDX="$1"; shift
 
-SEED_STR="42"
+SEED_STR="0,1,2,3,4"
+LAMBDA_STR="0.001,0.003,0.01,0.03,0.1,0.3,1,3,10,30"
 
 while [ $# -gt 0 ]; do
     case "$1" in
-        --seeds)  SEED_STR="$2"; shift 2 ;;
+        --seeds)  SEED_STR="$2";  shift 2 ;;
+        --lambdas) LAMBDA_STR="$2"; shift 2 ;;
         *) echo "Unknown arg: $1"; exit 1 ;;
     esac
 done
@@ -41,12 +45,17 @@ N_GPUS=${SLURM_GPUS_ON_NODE:-$(nvidia-smi -L 2>/dev/null | wc -l)}
 N_GPUS=$((N_GPUS > 0 ? N_GPUS : 1))
 
 IFS=',' read -ra SEEDS <<< "${SEED_STR}"
+IFS=',' read -ra LAMBDAS <<< "${LAMBDA_STR}"
+
+ANCHOR_LOSS="mse"
+ANCHOR_LAYERS="layer3,layer4"
+MEMORY_PER_CLASS=300
 
 SCRIPT_DIR="${SLURM_SUBMIT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}"
 WORK_DIR="${SCRIPT_DIR}/cnn"
 EXP_ROOT="${WORK_DIR}/experiments"
-PREFIX="exp${IDX}_cnn_"
-TIMING="${EXP_ROOT}/exp${IDX}_cnn_timing.txt"
+PREFIX="exp${IDX}b_cnn_"
+TIMING="${EXP_ROOT}/exp${IDX}b_cnn_timing.txt"
 LOG_DIR="${EXP_ROOT}/logs"
 mkdir -p "${EXP_ROOT}" "${LOG_DIR}"
 : > "${TIMING}"
@@ -69,34 +78,39 @@ COMMON=(
 cd "${WORK_DIR}"
 
 # --------------- job queue ---------------
+# Build list of all (name, seed, extra_args...) tuples
 declare -a JOBS=()
 
 for s in "${SEEDS[@]}"; do
-    JOBS+=("normal|${s}|--method normal")
-    JOBS+=("replay|${s}|--method replay --memory_per_class 300")
-    JOBS+=("ewc|${s}|--method ewc --ewc_lambda 1e8")
-    JOBS+=("lwf|${s}|--method lwf --lwf_lambda 30.0 --lwf_temperature 2.0")
+    JOBS+=("replay_l0|${s}|--method replay --memory_per_class ${MEMORY_PER_CLASS}")
+    for L in "${LAMBDAS[@]}"; do
+        tag="anchored_${ANCHOR_LOSS}_l${L//./p}"
+        JOBS+=("${tag}|${s}|--method anchored_replay --memory_per_class ${MEMORY_PER_CLASS} --anchor_lambda ${L} --anchor_loss ${ANCHOR_LOSS} --anchor_layers ${ANCHOR_LAYERS}")
+    done
 done
 
 # Actual concurrency: never more parallel jobs than there are jobs.
 N_PARALLEL=$(( ${#JOBS[@]} < N_GPUS ? ${#JOBS[@]} : N_GPUS ))
 N_PARALLEL=$(( N_PARALLEL > 0 ? N_PARALLEL : 1 ))
 
-echo "=== CNN Training ==="
-echo "  IDX=${IDX}, GPUs=${N_GPUS}, Seeds=(${SEED_STR})"
+echo "=== Experiment B Training ==="
+echo "  IDX=${IDX}, GPUs=${N_GPUS}, Seeds=(${SEED_STR}), Lambdas=(${LAMBDA_STR})"
 echo "  Total jobs: ${#JOBS[@]}, max parallel: ${N_PARALLEL}"
 echo ""
 
 # --------------- parallel dispatcher ---------------
-declare -a GPU_PIDS=()
+# Maintains up to N_GPUS concurrent processes, pinning each to a GPU.
+declare -a GPU_PIDS=()       # PID running on each GPU slot (0 = free)
 for ((g=0; g<N_GPUS; g++)); do GPU_PIDS+=(0); done
 
 wait_for_slot() {
+    # Block until at least one GPU slot is free.
     while true; do
         for ((g=0; g<N_GPUS; g++)); do
             if [ "${GPU_PIDS[$g]}" -eq 0 ]; then
                 AVAIL_GPU=$g; return
             fi
+            # Check if the process finished
             if ! kill -0 "${GPU_PIDS[$g]}" 2>/dev/null; then
                 wait "${GPU_PIDS[$g]}" 2>/dev/null || true
                 GPU_PIDS[$g]=0
@@ -139,12 +153,14 @@ for job_spec in "${JOBS[@]}"; do
     echo "[gpu${gpu_id}] ${name} seed${seed}  -> ${log_file}"
     (
         export CUDA_VISIBLE_DEVICES=${gpu_id}
+        # Limit CPU threads per job to avoid oversubscription across concurrent processes.
         n_cores=$(nproc)
         per_job=$(( n_cores / N_PARALLEL ))
         export OMP_NUM_THREADS=$(( per_job > 1 ? per_job : 1 ))
         export MKL_NUM_THREADS=${OMP_NUM_THREADS}
         export TORCH_NUM_THREADS=${OMP_NUM_THREADS}
         export OPENBLAS_NUM_THREADS=${OMP_NUM_THREADS}
+        # DataLoader workers: code uses min(8, cpu_count//2). Override cpu_count visibility.
         export _DATALOADER_NUM_WORKERS=$(( per_job / 2 > 2 ? per_job / 2 : 2 ))
         t0=$(date +%s)
         python run_experiment.py "${COMMON[@]}" --seed "${seed}" --save_dir "${save_dir}" ${extra} \
@@ -157,4 +173,4 @@ done
 
 wait_all
 printf 'TOTAL: %ds  (launched=%d, skipped=%d)\n' $(( $(date +%s) - T0 )) "${n_launched}" "${n_skipped}" | tee -a "${TIMING}"
-echo "Done. Run: bash analysis_cnn_agg.sh ${IDX} --gpus ${N_GPUS}"
+echo "Done. Run: bash b_analysis.sh ${IDX} --gpus ${N_GPUS}"

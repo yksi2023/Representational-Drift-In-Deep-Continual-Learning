@@ -136,6 +136,8 @@ def run_model_similarity(
         safe_layer_name = layer.replace(".", "_").replace("/", "_")
         matrix_path = os.path.join(matrix_dir, f"similarity_matrix_{safe_layer_name}.pdf")
         plot_similarity_matrix(sim_matrix, sorted_task_indices, layer, matrix_path)
+        npy_path = os.path.join(matrix_dir, f"similarity_matrix_{safe_layer_name}.npy")
+        np.save(npy_path, sim_matrix.numpy())
 
     profile_path = os.path.join(output_dir, "similarity_decay_profile.pdf")
     plot_similarity_decay_profile(all_reps, sorted_task_indices, layer_names, profile_path)

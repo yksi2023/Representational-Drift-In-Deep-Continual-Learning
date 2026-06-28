@@ -2,7 +2,7 @@ import matplotlib
 import matplotlib.pyplot as plt
 
 # Global plot style configuration — paper-ready
-matplotlib.rcParams['font.family'] = 'Arial'
+matplotlib.rcParams['font.family'] = 'Liberation Sans'
 matplotlib.rcParams['font.size'] = 14
 plt.rcParams.update({
     'figure.dpi': 150,
@@ -22,11 +22,12 @@ plt.rcParams.update({
 from .cache import build_reps_cache
 from .reference_drift import run_baseline_drift, run_reference_drift
 from .model_similarity import run_model_similarity
-from .sample_similarity import run_sample_similarity
+from .sample_similarity import run_sample_similarity, run_sample_similarity_evolution
 from .subspace_drift import run_subspace_drift
 from .gap_drift import run_gap_drift
 from .performance import plot_cnn_performance
 from .sample_umap import run_sample_umap
+from .network_health import run_network_health, run_subspace_overlap  # [exp-b]
 from .drift_metrics import (
     compute_metrics,
     compute_pairwise_similarity_matrix,
@@ -38,10 +39,13 @@ __all__ = [
     "run_baseline_drift",
     "run_model_similarity",
     "run_sample_similarity",
+    "run_sample_similarity_evolution",
     "run_subspace_drift",
     "run_gap_drift",
     "plot_cnn_performance",
     "run_sample_umap",
+    "run_network_health",  # [exp-b]
+    "run_subspace_overlap",  # [exp-b]
     "compute_metrics",
     "compute_pairwise_similarity_matrix",
 ]

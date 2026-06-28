@@ -91,18 +91,12 @@ def run_sample_umap(
         pca_explained_ratio: Optional[np.ndarray] = None
         if pca_var_threshold > 0:
             from sklearn.decomposition import PCA
-            print(f"    PCA: {X_all.shape[1]}D → {pca_var_threshold*100:.0f}% var threshold...")
-            # Use randomized SVD to avoid LAPACK 32-bit integer overflow on large
-            # feature maps (e.g. layer1 on 224x224: 200704D × 13000 rows > 2^31).
             n_cap = min(512, X_all.shape[0] - 1, X_all.shape[1] - 1)
+            print(f"    PCA: {X_all.shape[1]}D → {n_cap} components...")
             pca = PCA(n_components=n_cap, svd_solver="randomized", random_state=42)
-            pca.fit(X_all)
-            cumvar = np.cumsum(pca.explained_variance_ratio_)
-            k = int(np.searchsorted(cumvar, pca_var_threshold) + 1)
-            k = min(k, n_cap)
-            X_pca = pca.transform(X_all)[:, :k]
-            pca_n_components = k
-            pca_var_explained = float(cumvar[k - 1])
+            X_pca = pca.fit_transform(X_all)
+            pca_n_components = n_cap
+            pca_var_explained = float(np.sum(pca.explained_variance_ratio_))
             pca_eigenvalues = pca.explained_variance_
             pca_explained_ratio = pca.explained_variance_ratio_
             _plot_pca_diagnostics(
@@ -219,7 +213,7 @@ def _plot_by_class(
     T = len(Z_list)
     unique_classes = np.unique(labels_np)
     n_classes = len(unique_classes)
-    cmap = cm.get_cmap("tab20" if n_classes <= 20 else "hsv", n_classes)
+    cmap = plt.colormaps.get_cmap("tab20" if n_classes <= 20 else "hsv").resampled(n_classes)
     class_to_color = {int(c): cmap(i) for i, c in enumerate(unique_classes)}
 
     # Per-class display subsample mask (same indices across all checkpoints)
@@ -264,7 +258,7 @@ def _plot_by_class(
     from matplotlib.patches import Patch
     unique_classes = np.unique(labels_np)
     n_classes = len(unique_classes)
-    cmap_leg = cm.get_cmap("tab20" if n_classes <= 20 else "hsv", n_classes)
+    cmap_leg = plt.colormaps.get_cmap("tab20" if n_classes <= 20 else "hsv").resampled(n_classes)
     legend_handles = [
         Patch(color=cmap_leg(i), label=f"Class {int(c)}")
         for i, c in enumerate(unique_classes)
@@ -320,7 +314,7 @@ def _plot_by_class_paper_subset(
 
     unique_classes = np.unique(labels_np)
     n_classes = len(unique_classes)
-    cmap = cm.get_cmap("tab20" if n_classes <= 20 else "hsv", n_classes)
+    cmap = plt.colormaps.get_cmap("tab20" if n_classes <= 20 else "hsv").resampled(n_classes)
     class_to_color = {int(c): cmap(i) for i, c in enumerate(unique_classes)}
 
     rng = np.random.default_rng(42)
@@ -388,7 +382,7 @@ def _plot_by_checkpoint(
 ) -> None:
     """Single plot, color = checkpoint index."""
     T = len(Z_list)
-    cmap = cm.get_cmap("plasma", T)
+    cmap = plt.colormaps.get_cmap("plasma").resampled(T)
 
     fig, ax = plt.subplots(figsize=(7, 6))
     for i, (z, t) in enumerate(zip(Z_list, task_indices)):

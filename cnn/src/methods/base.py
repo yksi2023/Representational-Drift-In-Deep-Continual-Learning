@@ -59,6 +59,11 @@ class BaseContinualMethod(ABC):
         # {task_idx: [ {loss, accuracy} after stage 0, stage 1, ... ]}
         self.performance_history: Dict[int, list] = {i + 1: [] for i in range(self.num_tasks)}
 
+        # [exp-b] Forward-transfer / plasticity: best validation loss & accuracy
+        # the network reaches on each newly introduced task while training it.
+        # One entry per task (see Sec. 5.3 outcome #1).
+        self.plasticity_history: list = []
+
         # Snapshot the initial LR of each param group so we can restore it
         # at the start of every task (schedulers mutate param_groups[*]['lr']).
         self._initial_lrs = [g['lr'] for g in self.optimizer.param_groups]
@@ -199,6 +204,11 @@ class BaseContinualMethod(ABC):
         use_cuda_amp = bool(self.use_amp and (self.device.type == 'cuda'))
         scaler = torch.amp.GradScaler() if use_cuda_amp else None
 
+        # [exp-b] Track the best validation metrics reached on this (new) task
+        # as the forward-transfer / plasticity readout.
+        best_val_loss: Optional[float] = None
+        best_val_acc: Optional[float] = None
+
         for epoch in range(self.epochs):
             self.model.train()
             running_loss = 0.0
@@ -253,6 +263,10 @@ class BaseContinualMethod(ABC):
                     active_classes_range=active_range,
                 )
                 print(f"Validation - Loss: {val_loss:.4f}, Acc: {val_acc:.2f}%")
+                if best_val_loss is None or val_loss < best_val_loss:  # [exp-b]
+                    best_val_loss = float(val_loss)
+                if best_val_acc is None or val_acc > best_val_acc:  # [exp-b]
+                    best_val_acc = float(val_acc)
 
             self.step_scheduler(scheduler, val_loss)
             if scheduler is not None:
@@ -264,6 +278,12 @@ class BaseContinualMethod(ABC):
 
         if val_loader is not None:
             early_stopper.restore(self.model)
+
+        self.plasticity_history.append({  # [exp-b]
+            "task": task_idx + 1,
+            "best_val_loss": best_val_loss,
+            "best_val_acc": best_val_acc,
+        })
     
     def after_task(self, task_idx: int, train_loader) -> None:
         """Hook called after training each task. Override in subclasses."""
@@ -354,6 +374,12 @@ class BaseContinualMethod(ABC):
         with open(perf_path, "w", encoding="utf-8") as f:
             json.dump(perf_dict, f, ensure_ascii=False, indent=2)
         print(f"Performance history saved to {perf_path}")
+
+        # [exp-b] Forward-transfer / plasticity readout (best val metric per new task).
+        plasticity_path = os.path.join(self.save_dir, "plasticity_metrics.json")
+        with open(plasticity_path, "w", encoding="utf-8") as f:
+            json.dump(self.plasticity_history, f, ensure_ascii=False, indent=2)
+        print(f"Plasticity metrics saved to {plasticity_path}")
     
     def run(self) -> None:
         """Main training loop over all tasks."""

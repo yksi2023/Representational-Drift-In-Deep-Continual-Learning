@@ -6,10 +6,18 @@ import torch
 def register_activation_hooks(
     model: torch.nn.Module,
     layer_names: List[str],
+    detach: bool = True,  # [exp-b] non-detached capture for the anchoring penalty
 ) -> Tuple[Dict[str, torch.Tensor], List[torch.utils.hooks.RemovableHandle]]:
     """Register forward hooks to capture activations for the given layer names.
 
     Returns a dict to store activations and the list of hook handles.
+
+    Args:
+        detach: If True (default) the captured activations are detached from
+            the autograd graph -- correct for read-only drift analysis. Set to
+            False when the activations must remain differentiable (e.g. the
+            representation-anchoring penalty in AnchoredReplayMethod), so that
+            gradients flow back into the model weights through the probe pass.
     """
     activations: Dict[str, torch.Tensor] = {}
     handles: List[torch.utils.hooks.RemovableHandle] = []
@@ -27,7 +35,7 @@ def register_activation_hooks(
                 # Inline CPU transfers force a full GPU sync inside the
                 # forward pass, preventing overlap with compute. The
                 # consumer moves tensors to CPU once per batch instead.
-                activations[key] = out.detach().flatten(1)
+                activations[key] = (out.detach() if detach else out).flatten(1)
             return _hook
 
         handle = name_to_module[name].register_forward_hook(_make_hook(name))

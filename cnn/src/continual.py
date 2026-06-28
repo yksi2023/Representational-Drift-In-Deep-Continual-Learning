@@ -32,6 +32,12 @@ def incremental_learning(
     gpm_threshold: float = 0.99,
     lwf_lambda: float = 1.0,
     lwf_temperature: float = 2.0,
+    # [exp-b] representation-anchoring penalty kwargs (anchored_replay)
+    anchor_lambda: float = 0.0,
+    anchor_layers: str = "layer3,layer4",
+    anchor_loss: str = "mse",
+    anchor_probe_size: int = 256,
+    anchor_probe_mode: str = "test",
     learning_mode: str = "til",
 ):
     """
@@ -117,6 +123,17 @@ def incremental_learning(
             "memory_size": memory_size,
             "memory_per_class": memory_per_class,
             "first_task_only_memory": first_task_only_memory,
+        }
+    elif method_lower == 'anchored_replay':  # [exp-b]
+        method_kwargs = {
+            "memory_size": memory_size,
+            "memory_per_class": memory_per_class,
+            "first_task_only_memory": first_task_only_memory,
+            "anchor_lambda": anchor_lambda,
+            "anchor_layers": anchor_layers,
+            "anchor_loss": anchor_loss,
+            "anchor_probe_size": anchor_probe_size,
+            "anchor_probe_mode": anchor_probe_mode,
         }
     elif method_lower == 'ewc':
         method_kwargs = {
