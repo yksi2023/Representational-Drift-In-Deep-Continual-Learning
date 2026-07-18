@@ -19,6 +19,9 @@ def sequential_learning(
     early_stop_delta=1e-4,
     memory_per_task=50,
     replay_num_tasks=1,
+    anchor_lambda=0.0,
+    anchor_loss='mse',
+    anchor_probe_size=200,
     lwf_lambda=1.0,
     lwf_temperature=2.0,
     hnet_emb_dim=64,
@@ -48,6 +51,9 @@ def sequential_learning(
         train_seed: Base seed for training set generation (distinct from test seed=42).
         memory_per_task: Trials stored per past task (only used when method='replay').
         replay_num_tasks: Past tasks to sample per replay step (only used when method='replay').
+        anchor_lambda: State-trajectory anchor strength (only used by anchored_replay).
+        anchor_loss: Distance for the state anchor ('mse' or 'cosine').
+        anchor_probe_size: Number of task-1 test trials cached for anchoring.
         lwf_lambda: Distillation loss weight (only used when method='lwf').
         lwf_temperature: Softmax temperature for distillation (only used when method='lwf').
         hnet_emb_dim: Task embedding dimension (only used when method='hypernet').
@@ -82,6 +88,14 @@ def sequential_learning(
         method_kwargs = {
             'memory_per_task': memory_per_task,
             'replay_num_tasks': replay_num_tasks,
+        }
+    elif m == 'anchored_replay':
+        method_kwargs = {
+            'memory_per_task': memory_per_task,
+            'replay_num_tasks': replay_num_tasks,
+            'anchor_lambda': anchor_lambda,
+            'anchor_loss': anchor_loss,
+            'anchor_probe_size': anchor_probe_size,
         }
     elif m == 'lwf':
         method_kwargs = {

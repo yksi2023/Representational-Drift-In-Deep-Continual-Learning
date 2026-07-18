@@ -1,0 +1,27 @@
+CNN Exp1 Aggregate Data
+
+数据按实验方法分别存放。每个方法目录包含以下 CSV 文件：
+
+1. accuracy_matrix.csv
+
+准确率矩阵，不包含表头。
+行：被测试的任务，按 Task 1、Task 2、... 排列。
+列：完成对应任务训练后的模型，按 Task 1、Task 2、... 排列。
+单元格：不同随机种子的平均准确率，数值范围为 0 到 1。
+
+2. similarity_matrix_<layer>.csv
+
+指定网络层的表征余弦相似度矩阵，不包含表头。
+文件名中的 <layer> 为 layer1、layer2、layer3 或 layer4。
+行：完成不同任务训练后的模型，按 Task 1、Task 2、... 排列。
+列：完成不同任务训练后的模型，按 Task 1、Task 2、... 排列。
+单元格：行模型与列模型之间的平均表征余弦相似度，数值范围为 0 到 1。
+
+3. gap_drift_sample_pv.csv
+
+包含表头，每一行对应一个网络层和一个任务间隔。
+layer：网络层名称。
+task_gap：两个模型训练阶段之间相隔的任务数。
+n_seeds：参与统计的随机种子数量。
+sample_pv_pearson_mean：不同随机种子的 Sample-PV Pearson 相关系数均值。
+sample_pv_pearson_std：不同随机种子之间的 Sample-PV Pearson 相关系数标准差。

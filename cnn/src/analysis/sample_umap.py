@@ -91,11 +91,11 @@ def run_sample_umap(
         pca_explained_ratio: Optional[np.ndarray] = None
         if pca_var_threshold > 0:
             from sklearn.decomposition import PCA
-            n_cap = min(512, X_all.shape[0] - 1, X_all.shape[1] - 1)
-            print(f"    PCA: {X_all.shape[1]}D → {n_cap} components...")
-            pca = PCA(n_components=n_cap, svd_solver="randomized", random_state=42)
+            n_components = min(512, X_all.shape[0] - 1, X_all.shape[1] - 1)
+            print(f"    PCA: {X_all.shape[1]}D → {n_components} components (fixed 512 cap)...")
+            pca = PCA(n_components=n_components, svd_solver="randomized", random_state=42)
             X_pca = pca.fit_transform(X_all)
-            pca_n_components = n_cap
+            pca_n_components = n_components
             pca_var_explained = float(np.sum(pca.explained_variance_ratio_))
             pca_eigenvalues = pca.explained_variance_
             pca_explained_ratio = pca.explained_variance_ratio_

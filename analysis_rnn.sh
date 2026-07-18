@@ -9,6 +9,7 @@
 #
 # Submit:
 #   sbatch analysis_rnn.sh 1
+#   sbatch analysis_rnn.sh 1b --methods replay,anchored_replay
 #   sbatch --gpus 8 analysis_rnn.sh 1 --force
 #   sbatch analysis_rnn.sh 1 --skip_umap --methods normal,replay
 #
@@ -43,7 +44,7 @@ while [ $# -gt 0 ]; do
         --n_trials_per_dir)   EXTRA_ARGS+=("$1" "$2"); shift 2 ;;
         --n_trials_per_dir=*) EXTRA_ARGS+=("$1"); shift ;;
         *)
-            if [[ "$1" =~ ^[0-9]+$ ]]; then
+            if [[ "$1" =~ ^[0-9]+[[:alnum:]_-]*$ ]]; then
                 INDICES+=("$1"); shift
             else
                 echo "Unknown arg: $1"; exit 1

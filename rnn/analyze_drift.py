@@ -48,6 +48,16 @@ def parse_args():
                         help="Random seed for neuron sampling reproducibility")
     parser.add_argument("--skip_sample_sim", action="store_true",
                         help="Skip sample similarity matrices (can be slow for many tasks)")
+    parser.add_argument("--skip_model_sim", action="store_true",
+                        help="Skip model STPV similarity matrices")
+    parser.add_argument("--skip_temporal_sim", action="store_true",
+                        help="Skip cross-checkpoint temporal similarity")
+    parser.add_argument("--skip_vector_drift", action="store_true",
+                        help="Skip vector drift analysis")
+    parser.add_argument("--skip_subspace_drift", action="store_true",
+                        help="Skip coding/null subspace analysis")
+    parser.add_argument("--skip_performance", action="store_true",
+                        help="Skip performance plots")
     parser.add_argument("--hidden_size", type=int, default=256,
                         help="RNN hidden size (needed to reshape flat reps for temporal analysis)")
     parser.add_argument("--skip_umap", action="store_true",
@@ -138,13 +148,16 @@ def main():
     )
 
     # 2. Model pairwise cosine similarity matrices
-    print("\n[2/8] Running model STPV similarity analysis...")
-    run_model_similarity(
-        exp_dir=args.exp_dir,
-        probe_tasks=args.probe_tasks,
-        task_names=task_names,
-        output_dir=args.output_dir,
-    )
+    if not args.skip_model_sim:
+        print("\n[2/8] Running model STPV similarity analysis...")
+        run_model_similarity(
+            exp_dir=args.exp_dir,
+            probe_tasks=args.probe_tasks,
+            task_names=task_names,
+            output_dir=args.output_dir,
+        )
+    else:
+        print("\n[2/8] Skipping model similarity (--skip_model_sim).")
 
     # 3. Sample-wise similarity matrices
     if not args.skip_sample_sim:
@@ -159,40 +172,52 @@ def main():
         print("\n[3/8] Skipping sample similarity (--skip_sample_sim).")
 
     # 4. Temporal hidden state similarity
-    print("\n[4/8] Running cross-checkpoint PV similarity...")
-    run_temporal_similarity(
-        exp_dir=args.exp_dir,
-        probe_tasks=args.probe_tasks,
-        task_names=task_names,
-        output_dir=args.output_dir,
-        hidden_size=args.hidden_size,
-    )
+    if not args.skip_temporal_sim:
+        print("\n[4/8] Running cross-checkpoint PV similarity...")
+        run_temporal_similarity(
+            exp_dir=args.exp_dir,
+            probe_tasks=args.probe_tasks,
+            task_names=task_names,
+            output_dir=args.output_dir,
+            hidden_size=args.hidden_size,
+        )
+    else:
+        print("\n[4/8] Skipping temporal similarity (--skip_temporal_sim).")
 
     # 5. Vector drift (PV / ERV / TCV)
-    print("\n[5/8] Running vector drift analysis (STPV / PV / ERV / TCV)...")
-    run_vector_drift(
-        exp_dir=args.exp_dir,
-        probe_tasks=args.probe_tasks,
-        task_names=task_names,
-        output_dir=args.output_dir,
-        hidden_size=args.hidden_size,
-    )
+    if not args.skip_vector_drift:
+        print("\n[5/8] Running vector drift analysis (STPV / PV / ERV / TCV)...")
+        run_vector_drift(
+            exp_dir=args.exp_dir,
+            probe_tasks=args.probe_tasks,
+            task_names=task_names,
+            output_dir=args.output_dir,
+            hidden_size=args.hidden_size,
+        )
+    else:
+        print("\n[5/8] Skipping vector drift (--skip_vector_drift).")
 
     # 6. Coding / null subspace drift decomposition
-    print("\n[6/8] Running coding/null subspace drift decomposition...")
-    run_subspace_drift(
-        exp_dir=args.exp_dir,
-        probe_tasks=args.probe_tasks,
-        task_names=task_names,
-        output_dir=args.output_dir,
-    )
+    if not args.skip_subspace_drift:
+        print("\n[6/8] Running coding/null subspace drift decomposition...")
+        run_subspace_drift(
+            exp_dir=args.exp_dir,
+            probe_tasks=args.probe_tasks,
+            task_names=task_names,
+            output_dir=args.output_dir,
+        )
+    else:
+        print("\n[6/8] Skipping subspace drift (--skip_subspace_drift).")
 
     # 7. Performance plots
-    print("\n[7/8] Generating performance plots...")
-    try:
-        plot_rnn_performance(args.exp_dir, args.output_dir)
-    except FileNotFoundError as e:
-        print(f"  Skipping performance plots: {e}")
+    if not args.skip_performance:
+        print("\n[7/8] Generating performance plots...")
+        try:
+            plot_rnn_performance(args.exp_dir, args.output_dir)
+        except FileNotFoundError as e:
+            print(f"  Skipping performance plots: {e}")
+    else:
+        print("\n[7/8] Skipping performance plots (--skip_performance).")
 
     # 8. Direction UMAP
     if not args.skip_umap:

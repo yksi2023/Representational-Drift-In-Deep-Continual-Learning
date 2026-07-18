@@ -7,7 +7,8 @@ are performed; the script is pure CPU and finishes in seconds.
 Outputs (per method):
   1. accuracy_matrix.pdf              -- task × stage accuracy heatmap (mean)
   2. similarity_matrix_<layer>.pdf    -- pairwise cosine similarity heatmap (mean)
-  3. gap_drift_sample_pv.pdf          -- Sample-PV Pearson corr vs task gap (mean ± std)
+  3. reference_drift.pdf              -- cosine sim & L2 vs task index (mean ± std)
+  4. gap_drift_sample_pv.pdf          -- Sample-PV Pearson corr vs task gap (mean ± std)
 
 Usage:
     python aggregate_seeds.py \\
@@ -108,6 +109,15 @@ def load_gap_drift(exp_dir: str, layers: List[str]) -> Optional[Dict[str, Tuple[
     return result if result else None
 
 
+def load_reference_drift(exp_dir: str) -> Optional[List[dict]]:
+    """Load reference drift metrics.json from drift_analysis/."""
+    path = os.path.join(exp_dir, "drift_analysis", "metrics.json")
+    if not os.path.exists(path):
+        return None
+    with open(path, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
 # ── plot 1: accuracy matrix ──────────────────────────────────────────────────
 
 def plot_avg_accuracy_matrix(
@@ -168,6 +178,84 @@ def plot_avg_similarity_matrix(
 
 
 # ── plot 3: gap drift ────────────────────────────────────────────────────────
+
+def plot_avg_reference_drift(
+    all_seed_metrics: List[List[dict]],
+    method: str,
+    output_dir: str,
+):
+    """Average reference drift curves across seeds and plot with error bands.
+
+    Each element is a list of dicts with keys:
+      layer, target_task, cosine_sim_mean, l2_dist_mean, shuffled_sim_mean
+    """
+    # Group by (layer, target_task)
+    grouped: Dict[str, Dict[int, Dict[str, list]]] = defaultdict(
+        lambda: defaultdict(lambda: defaultdict(list))
+    )
+    for seed_metrics in all_seed_metrics:
+        for entry in seed_metrics:
+            layer = entry["layer"]
+            tt = entry["target_task"]
+            grouped[layer][tt]["cosine"].append(entry["cosine_sim_mean"])
+            grouped[layer][tt]["l2"].append(entry["l2_dist_mean"])
+            grouped[layer][tt]["shuffled"].append(entry["shuffled_sim_mean"])
+
+    layers = sorted(grouped.keys())
+    cmap = plt.get_cmap("tab10")
+
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 6))
+    all_tasks: List[int] = []
+
+    for idx, layer in enumerate(layers):
+        task_data = grouped[layer]
+        sorted_tasks = sorted(task_data.keys())
+        all_tasks.extend(sorted_tasks)
+        color = cmap(idx % 10)
+
+        cos_mean = [np.mean(task_data[t]["cosine"]) for t in sorted_tasks]
+        cos_std = [np.std(task_data[t]["cosine"]) for t in sorted_tasks]
+        shuf_mean = [np.mean(task_data[t]["shuffled"]) for t in sorted_tasks]
+
+        ax1.errorbar(sorted_tasks, cos_mean, yerr=cos_std, marker="o", capsize=4,
+                     label=layer, color=color, linewidth=1.5, markersize=5)
+        ax1.plot(sorted_tasks, shuf_mean, linestyle="--", color=color, alpha=0.4)
+
+        l2_mean = [np.mean(task_data[t]["l2"]) for t in sorted_tasks]
+        l2_std = [np.std(task_data[t]["l2"]) for t in sorted_tasks]
+        ax2.errorbar(sorted_tasks, l2_mean, yerr=l2_std, marker="o", capsize=4,
+                     label=layer, color=color, linewidth=1.5, markersize=5)
+
+    ax1.set_xlabel("Task Index")
+    ax1.set_ylabel("Cosine Similarity")
+    ax1.set_title(f"{method} (n={len(all_seed_metrics)} seeds)", fontsize=14)
+    apply_paper_axis_style(
+        ax1, legend=True,
+        legend_kwargs={"fontsize": SMALL_LEGEND_FONT_SIZE, "title_fontsize": SMALL_LEGEND_TITLE_SIZE},
+    )
+    ax1.grid(True, linestyle="--", alpha=0.6)
+
+    ax2.set_xlabel("Task Index")
+    ax2.set_ylabel("L2 Distance")
+    apply_paper_axis_style(
+        ax2, legend=True,
+        legend_kwargs={"fontsize": SMALL_LEGEND_FONT_SIZE, "title_fontsize": SMALL_LEGEND_TITLE_SIZE},
+    )
+    ax2.grid(True, linestyle="--", alpha=0.6)
+
+    if all_tasks:
+        ticks, labels = sparse_value_ticks(all_tasks)
+        ax1.set_xticks(ticks); ax1.set_xticklabels(labels)
+        ax2.set_xticks(ticks); ax2.set_xticklabels(labels)
+
+    plt.tight_layout()
+    path = os.path.join(output_dir, "reference_drift.pdf")
+    savefig_compact(fig, path)
+    plt.close()
+    print(f"  [{method}] reference_drift.pdf  ({len(all_seed_metrics)} seeds)")
+
+
+# ── plot 4: gap drift ────────────────────────────────────────────────────────
 
 def plot_avg_gap_drift(
     all_seed_results: List[Dict[str, Tuple[List[int], List[float]]]],
@@ -290,7 +378,19 @@ def main():
                 print(f"  [{method}] No similarity .npy for {ln}, skipping. "
                       f"Run analysis_cnn.sh first.")
 
-        # ── Plot 3: gap drift (from pre-computed JSON) ──
+        # ── Plot 3: reference drift (from pre-computed metrics.json) ──
+        ref_drift_results = []
+        for sd in seed_dirs:
+            r = load_reference_drift(sd)
+            if r is not None:
+                ref_drift_results.append(r)
+        if ref_drift_results:
+            plot_avg_reference_drift(ref_drift_results, method, method_out)
+        else:
+            print(f"  [{method}] No reference drift metrics.json found, skipping. "
+                  f"Run analysis_cnn.sh first.")
+
+        # ── Plot 4: gap drift (from pre-computed JSON) ──
         gap_results: List[Dict[str, Tuple[List[int], List[float]]]] = []
         for sd in seed_dirs:
             g = load_gap_drift(sd, layers)

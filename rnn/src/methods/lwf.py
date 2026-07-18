@@ -38,10 +38,10 @@ class LwFMethod(BaseMethod):
         loss = task_loss
         if self.teachers:
             distill_total = torch.tensor(0.0, device=self.device)
-            with torch.no_grad():
-                for teacher in self.teachers:
+            for teacher in self.teachers:
+                with torch.no_grad():
                     teacher_outputs = teacher(x, return_all_states=False)
-                    distill_total = distill_total + self._distillation_loss(outputs, teacher_outputs, mask)
+                distill_total = distill_total + self._distillation_loss(outputs, teacher_outputs, mask)
             loss = task_loss + self.lwf_lambda * distill_total / len(self.teachers)
 
         loss.backward()

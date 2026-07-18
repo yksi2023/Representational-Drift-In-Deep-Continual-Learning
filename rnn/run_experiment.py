@@ -17,13 +17,21 @@ def main():
     parser.add_argument("--num_iterations", type=int, default=2000)
     parser.add_argument("--batch_size", type=int, default=64)
     parser.add_argument("--lr", type=float, default=0.001)
-    parser.add_argument("--method", type=str, default="normal", choices=["normal", "ewc", "replay", "lwf", "hypernet", "duncker"])
+    parser.add_argument("--method", type=str, default="normal", choices=["normal", "ewc", "replay", "anchored_replay", "lwf", "hypernet", "duncker"])
     # EWC
     parser.add_argument("--ewc_lambda", type=float, default=100.0, help="EWC regularization strength")
-    parser.add_argument("--fisher_samples", type=int, default=200, help="Samples for Fisher estimation")
+    parser.add_argument("--fisher_samples", type=int, default=200,
+                        help="Masked timestep observations for Fisher estimation")
     # Replay
     parser.add_argument("--memory_per_task", type=int, default=100, help="Trials stored per past task for replay")
     parser.add_argument("--replay_num_tasks", type=int, default=5, help="Past tasks to sample per replay step (default=1 for speed)")
+    # Anchored replay
+    parser.add_argument("--anchor_lambda", type=float, default=0.0,
+                        help="State-trajectory anchor strength for anchored_replay")
+    parser.add_argument("--anchor_loss", choices=["mse", "cosine"], default="mse",
+                        help="Distance used by the anchored_replay state anchor")
+    parser.add_argument("--anchor_probe_size", type=int, default=200,
+                        help="Task-1 test trials cached as the anchored_replay probe")
     # LwF
     parser.add_argument("--lwf_lambda", type=float, default=1.0, help="LwF distillation loss weight")
     parser.add_argument("--lwf_temperature", type=float, default=2.0, help="LwF softmax temperature")
@@ -106,6 +114,9 @@ def main():
         early_stop_delta=args.early_stop_delta,
         memory_per_task=args.memory_per_task,
         replay_num_tasks=args.replay_num_tasks,
+        anchor_lambda=args.anchor_lambda,
+        anchor_loss=args.anchor_loss,
+        anchor_probe_size=args.anchor_probe_size,
         lwf_lambda=args.lwf_lambda,
         lwf_temperature=args.lwf_temperature,
         hnet_emb_dim=args.hnet_emb_dim,
@@ -129,6 +140,8 @@ if __name__ == "__main__":
 #   python run_experiment.py --method ewc --ewc_lambda 100 --save_dir experiments/rnn_ewc
 # Replay:
 #   python run_experiment.py --method replay --memory_per_task 50 --save_dir experiments/rnn_replay
+# Anchored replay:
+#   python run_experiment.py --method anchored_replay --anchor_lambda 0.1 --save_dir experiments/rnn_anchor
 # LwF:
 #   python run_experiment.py --method lwf --lwf_lambda 1.0 --save_dir experiments/rnn_lwf
 # HyperNet:

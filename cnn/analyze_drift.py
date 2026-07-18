@@ -261,12 +261,49 @@ def main():
     else:
         print("\n[5b] Skipping network-health (--skip_health).")
 
-    # 5c. [exp-b] Cross-task coding-subspace overlap (reuses reps_cache, no extra forward)
+    # 5c. [exp-b] Cross-task coding-subspace overlap
+    # Requires probe data from ALL classes (not just task 0), so we do a single
+    # forward pass on the last checkpoint with a full-class probe loader.
     if not args.skip_subspace_overlap:
         print("\n[5c] Running cross-task subspace-overlap analysis...")
+        num_classes_cfg = json.load(open(os.path.join(args.ckpt_dir, "experiment_config.json")))["num_classes"]
+        full_probe_loader = data_manager.get_loader(
+            mode=args.probe_type,
+            label=range(num_classes_cfg),
+            batch_size=args.batch_size,
+            shuffle=False,
+        )
+        last_task_key = max(reps_cache.keys())
+        from src.checkpoints import load_model as _load_model
+        from src.representations import register_activation_hooks as _reg_hooks
+        _load_model(model, args.ckpt_dir, last_task_key, map_location=device)
+        model.eval()
+        activations, handles = _reg_hooks(model, layer_names)
+        collected_full = {ln: [] for ln in layer_names}
+        full_label_list = []
+        try:
+            for batch_idx, (inputs, lbls) in enumerate(full_probe_loader):
+                inputs = inputs.to(device, non_blocking=True)
+                full_label_list.append(lbls.cpu())
+                if args.amp and device.type == "cuda":
+                    with torch.amp.autocast(device_type=device.type):
+                        _ = model(inputs)
+                else:
+                    _ = model(inputs)
+                for ln in layer_names:
+                    collected_full[ln].append(activations[ln].cpu().float())
+                if args.max_batches and (batch_idx + 1) >= args.max_batches:
+                    break
+        finally:
+            for h in handles:
+                h.remove()
+        full_labels = torch.cat(full_label_list, dim=0)
+        full_reps_cache = {
+            last_task_key: {ln: torch.cat(v, dim=0) for ln, v in collected_full.items()}
+        }
         run_subspace_overlap(
-            reps_cache=reps_cache,
-            labels=labels,
+            reps_cache=full_reps_cache,
+            labels=full_labels,
             layer_names=layer_names,
             increment=increment,
             output_dir=args.output_dir,
