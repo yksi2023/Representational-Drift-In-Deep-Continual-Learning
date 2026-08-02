@@ -17,6 +17,9 @@ from src.analysis._plot_utils import (
     SMALL_LEGEND_FONT_SIZE,
     SMALL_LEGEND_TITLE_SIZE,
     apply_paper_axis_style,
+    layer_color_map,
+    layer_errorbar_kwargs,
+    layer_marker_map,
     sparse_value_ticks,
 )
 
@@ -27,6 +30,8 @@ def plot_drift_results(results: List[Dict], output_dir: str):
     layers = sorted(list(set(r["layer"] for r in results)))
 
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 6))
+    colors = layer_color_map(layers)
+    markers = layer_marker_map(layers)
 
     xticks, xticklabels = sparse_value_ticks(tasks)
 
@@ -38,7 +43,10 @@ def plot_drift_results(results: List[Dict], output_dir: str):
 
         cos_means = [d["cosine_sim_mean"] for d in layer_data]
         cos_stds = [d["cosine_sim_std"] for d in layer_data]
-        line = ax1.errorbar(xs, cos_means, yerr=cos_stds, label=f"{layer}", capsize=5, marker="o")
+        line = ax1.errorbar(
+            xs, cos_means, yerr=cos_stds, label=f"{layer}",
+            **layer_errorbar_kwargs(colors[layer], markers[layer]),
+        )
 
         shuffled_means = [d["shuffled_sim_mean"] for d in layer_data]
         ax1.plot(xs, shuffled_means, linestyle="--", color=line[0].get_color(), alpha=0.5,
@@ -46,7 +54,10 @@ def plot_drift_results(results: List[Dict], output_dir: str):
 
         l2_means = [d["l2_dist_mean"] for d in layer_data]
         l2_stds = [d["l2_dist_std"] for d in layer_data]
-        ax2.errorbar(xs, l2_means, yerr=l2_stds, label=layer, capsize=5, marker="o")
+        ax2.errorbar(
+            xs, l2_means, yerr=l2_stds, label=layer,
+            **layer_errorbar_kwargs(colors[layer], markers[layer]),
+        )
 
     ax1.set_xlabel("Task Index")
     ax1.set_ylabel("Cosine Similarity")
@@ -60,7 +71,7 @@ def plot_drift_results(results: List[Dict], output_dir: str):
             "title_fontsize": SMALL_LEGEND_TITLE_SIZE,
         },
     )
-    ax1.grid(True, linestyle="--", alpha=0.6)
+    ax1.grid(True, linestyle="--", alpha=0.3)
 
     ax2.set_xlabel("Task Index")
     ax2.set_ylabel("L2 Distance")
@@ -74,7 +85,7 @@ def plot_drift_results(results: List[Dict], output_dir: str):
             "title_fontsize": SMALL_LEGEND_TITLE_SIZE,
         },
     )
-    ax2.grid(True, linestyle="--", alpha=0.6)
+    ax2.grid(True, linestyle="--", alpha=0.3)
 
     plt.tight_layout()
     output_path = os.path.join(output_dir, "drift_plot.pdf")

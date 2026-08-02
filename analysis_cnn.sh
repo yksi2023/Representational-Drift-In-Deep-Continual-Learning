@@ -16,6 +16,7 @@
 #   --force      Re-analyze even if drift_analysis/metrics.json exists
 #   --layers L   Override layer names (comma-separated)
 #   --methods M  Comma-separated methods to analyze (e.g. replay,ewc). Default: all
+#   --only_aggregate_metrics  Generate only metrics consumed by aggregate_seeds.py
 # -----------------------------------------------------------------------------
 set -euo pipefail
 ulimit -n 65536
@@ -28,6 +29,7 @@ LAYERS_OVERRIDE=""
 METHODS_STR=""
 FORCE=false
 JOBS_PER_GPU=1
+ONLY_AGGREGATE_METRICS=false
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -35,6 +37,7 @@ while [ $# -gt 0 ]; do
         --layers)        LAYERS_OVERRIDE="$2"; shift 2 ;;
         --methods)       METHODS_STR="$2"; shift 2 ;;
         --jobs_per_gpu)  JOBS_PER_GPU="$2"; shift 2 ;;
+        --only_aggregate_metrics) ONLY_AGGREGATE_METRICS=true; shift ;;
         *)
             if [[ "$1" =~ ^[0-9]+$ ]]; then
                 INDICES+=("$1"); shift
@@ -45,7 +48,7 @@ while [ $# -gt 0 ]; do
 done
 
 if [ ${#INDICES[@]} -eq 0 ]; then
-    echo "Usage: sbatch [slurm opts] analysis_cnn.sh <i> [<i2> ...] [--force] [--layers L] [--methods M]"
+    echo "Usage: sbatch [slurm opts] analysis_cnn.sh <i> [<i2> ...] [--force] [--layers L] [--methods M] [--only_aggregate_metrics]"
     exit 1
 fi
 
@@ -104,17 +107,39 @@ default_layers_for() {
 }
 
 is_analyzed() {
-    [ -f "$1/drift_analysis/metrics.json" ]
+    if [ "${ONLY_AGGREGATE_METRICS}" = true ]; then
+        [ -f "$1/drift_analysis/metrics.json" ] &&
+        [ -f "$1/drift_analysis/sample_similarity_evolution/similarity_evolution_metrics.json" ] &&
+        [ -f "$1/drift_analysis/gap_drift/gap_drift_metrics.json" ]
+    else
+        [ -f "$1/drift_analysis/metrics.json" ]
+    fi
 }
 
 echo "=== CNN Drift Analysis ==="
 echo "  Indices: ${INDICES[*]}, GPUs=${N_GPUS}, Slots=${N_SLOTS}"
 echo "  Directories: ${#all_dirs[@]}"
+echo "  Aggregate metrics only: ${ONLY_AGGREGATE_METRICS}"
 echo ""
 
 # --------------- parallel dispatcher ---------------
 declare -a SLOT_PIDS=()
-for ((s=0; s<N_SLOTS; s++)); do SLOT_PIDS+=(0); done
+declare -a SLOT_NAMES=()
+FAILED=0
+for ((s=0; s<N_SLOTS; s++)); do
+    SLOT_PIDS+=(0)
+    SLOT_NAMES+=("")
+done
+
+reap_slot() {
+    local slot="$1"
+    if ! wait "${SLOT_PIDS[$slot]}"; then
+        echo "[failed] ${SLOT_NAMES[$slot]} (see its analysis log)"
+        FAILED=$((FAILED + 1))
+    fi
+    SLOT_PIDS[$slot]=0
+    SLOT_NAMES[$slot]=""
+}
 
 wait_for_slot() {
     while true; do
@@ -123,8 +148,7 @@ wait_for_slot() {
                 AVAIL_SLOT=$s; return
             fi
             if ! kill -0 "${SLOT_PIDS[$s]}" 2>/dev/null; then
-                wait "${SLOT_PIDS[$s]}" 2>/dev/null || true
-                SLOT_PIDS[$s]=0
+                reap_slot "$s"
                 AVAIL_SLOT=$s; return
             fi
         done
@@ -135,8 +159,7 @@ wait_for_slot() {
 wait_all() {
     for ((s=0; s<N_SLOTS; s++)); do
         if [ "${SLOT_PIDS[$s]}" -ne 0 ]; then
-            wait "${SLOT_PIDS[$s]}" 2>/dev/null || true
-            SLOT_PIDS[$s]=0
+            reap_slot "$s"
         fi
     done
 }
@@ -197,15 +220,24 @@ for d in "${all_dirs[@]}"; do
         export MKL_NUM_THREADS=${OMP_NUM_THREADS}
         export TORCH_NUM_THREADS=${OMP_NUM_THREADS}
         export OPENBLAS_NUM_THREADS=${OMP_NUM_THREADS}
+        extra_analysis_args=()
+        if [ "${ONLY_AGGREGATE_METRICS}" = true ]; then
+            extra_analysis_args+=(--only_aggregate_metrics)
+        fi
         python analyze_drift.py \
             --ckpt_dir "${d}" \
             --layers "${layers}" \
+            "${extra_analysis_args[@]}" \
             2>&1 | tail -n 200 > "${log_file}"
     ) &
     SLOT_PIDS[${slot}]=$!
+    SLOT_NAMES[${slot}]="${base}"
     n_run=$((n_run + 1))
 done
 
 wait_all
 echo ""
-echo "Done. Analyzed=${n_run}, Skipped=${n_skip}"
+echo "Done. Analyzed=${n_run}, Skipped=${n_skip}, Failed=${FAILED}"
+if [ "${FAILED}" -ne 0 ]; then
+    exit 1
+fi

@@ -12,8 +12,10 @@ from src.analysis._plot_utils import (
     SINGLE_FIGSIZE,
     SMALL_LEGEND_FONT_SIZE,
     SMALL_LEGEND_TITLE_SIZE,
-    WIDE_FIGSIZE,
     apply_paper_axis_style,
+    layer_color_map,
+    layer_errorbar_kwargs,
+    layer_marker_map,
     savefig_compact,
     sparse_ticks,
     sparse_value_ticks,
@@ -28,7 +30,7 @@ def plot_similarity_matrix(
     metric_label: str = "Cosine Similarity",
 ):
     """Plot similarity matrix as a heatmap with colormap."""
-    fig, ax = plt.subplots(figsize=WIDE_FIGSIZE)
+    fig, ax = plt.subplots(figsize=SINGLE_FIGSIZE)
     matrix_np = sim_matrix.numpy()
     im = ax.imshow(matrix_np, cmap="viridis", vmin=0, vmax=1, aspect="equal")
     ax.set_box_aspect(1)
@@ -81,10 +83,15 @@ def plot_similarity_decay_profile(
 ):
     fig, ax = plt.subplots(figsize=SINGLE_FIGSIZE)
     all_gaps: List[int] = []
+    colors = layer_color_map(layer_names)
+    markers = layer_marker_map(layer_names)
     for layer_name in layer_names:
         gaps, means, stds = compute_similarity_by_gap(all_reps[layer_name], task_indices, exclude_first)
         all_gaps.extend(gaps)
-        ax.errorbar(gaps, means, yerr=stds, marker="o", capsize=5, label=layer_name)
+        ax.errorbar(
+            gaps, means, yerr=stds, label=layer_name,
+            **layer_errorbar_kwargs(colors[layer_name], markers[layer_name]),
+        )
 
     ax.set_xlabel("Task Gap")
     ax.set_ylabel("Cosine Similarity")
@@ -101,7 +108,7 @@ def plot_similarity_decay_profile(
             "title_fontsize": SMALL_LEGEND_TITLE_SIZE,
         },
     )
-    ax.grid(True, linestyle="--", alpha=0.6)
+    ax.grid(True, linestyle="--", alpha=0.3)
 
     savefig_compact(fig, output_path)
     print(f"Similarity decay profile saved to {output_path}")

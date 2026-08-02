@@ -51,6 +51,12 @@ def export_gap_drift(seed_dirs, layers, method_dir):
         }
         for (layer, gap), vals in sorted(values.items())
     ]
+    if not rows:
+        print(
+            f"[{os.path.basename(method_dir)}] no gap drift rows found; "
+            "leaving any existing CSV unchanged"
+        )
+        return
     write_rows(
         os.path.join(method_dir, "gap_drift_sample_pv.csv"),
         ["layer", "task_gap", "n_seeds", "sample_pv_pearson_mean", "sample_pv_pearson_std"],

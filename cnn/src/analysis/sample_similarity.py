@@ -7,7 +7,12 @@ import matplotlib.pyplot as plt
 import torch
 import torch.nn.functional as F
 
-from src.analysis._plot_utils import apply_paper_axis_style
+from src.analysis._plot_utils import (
+    apply_paper_axis_style,
+    layer_color_map,
+    layer_line_kwargs,
+    layer_marker_map,
+)
 
 
 def compute_sample_similarity_matrix(reps: torch.Tensor) -> torch.Tensor:
@@ -170,24 +175,34 @@ def run_sample_similarity_evolution(
 
     # Plot
     fig, axes = plt.subplots(1, 2, figsize=(12, 5))
+    colors = layer_color_map(layer_names)
+    markers = layer_marker_map(layer_names)
 
     for layer in layer_names:
         tasks = [m["task"] for m in metrics[layer]]
         cka_vals = [m["cka"] for m in metrics[layer]]
         frob_vals = [m["frobenius_norm"] for m in metrics[layer]]
-        axes[0].plot(tasks, cka_vals, marker="o", markersize=3, label=layer)
-        axes[1].plot(tasks, frob_vals, marker="o", markersize=3, label=layer)
+        axes[0].plot(
+            tasks, cka_vals, label=layer,
+            **layer_line_kwargs(colors[layer], markers[layer]),
+        )
+        axes[1].plot(
+            tasks, frob_vals, label=layer,
+            **layer_line_kwargs(colors[layer], markers[layer]),
+        )
 
     axes[0].set_xlabel("Task")
     axes[0].set_ylabel("CKA (vs Task 0)")
     axes[0].set_ylim(0, 1.05)
     axes[0].legend(fontsize=8)
     apply_paper_axis_style(axes[0])
+    axes[0].grid(True, linestyle="--", alpha=0.3)
 
     axes[1].set_xlabel("Task")
     axes[1].set_ylabel("Frobenius Norm (vs Task 0)")
     axes[1].legend(fontsize=8)
     apply_paper_axis_style(axes[1])
+    axes[1].grid(True, linestyle="--", alpha=0.3)
 
     plt.tight_layout()
     plot_path = os.path.join(evo_dir, "similarity_evolution.pdf")

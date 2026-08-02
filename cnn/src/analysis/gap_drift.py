@@ -13,6 +13,7 @@ saturation as gap grows.
 """
 import json
 import os
+import tempfile
 from typing import Dict, List, Tuple
 
 import matplotlib.pyplot as plt
@@ -24,6 +25,9 @@ from src.analysis._plot_utils import (
     SMALL_LEGEND_TITLE_SIZE,
     WIDE_FIGSIZE,
     apply_paper_axis_style,
+    layer_color_map,
+    layer_errorbar_kwargs,
+    layer_marker_map,
     savefig_compact,
     sparse_value_ticks,
 )
@@ -69,14 +73,16 @@ def _plot_all_layers(
 ):
     """Plot Sample-PV correlation vs gap for all layers on one figure."""
     fig, ax = plt.subplots(figsize=WIDE_FIGSIZE)
-    cmap = plt.get_cmap("tab10")
     all_gaps: List[int] = []
+    colors = layer_color_map(list(all_results))
+    markers = layer_marker_map(list(all_results))
 
-    for idx, (layer, (gaps, means, stds)) in enumerate(all_results.items()):
-        color = cmap(idx % 10)
+    for layer, (gaps, means, stds) in all_results.items():
         all_gaps.extend(gaps)
-        ax.errorbar(gaps, means, yerr=stds, marker="o", capsize=3,
-                    label=layer, color=color, linewidth=1.5, markersize=4)
+        ax.errorbar(
+            gaps, means, yerr=stds, label=layer,
+            **layer_errorbar_kwargs(colors[layer], markers[layer]),
+        )
 
     ax.set_xlabel("Task Gap")
     ax.set_ylabel("Pearson Correlation")
@@ -90,7 +96,7 @@ def _plot_all_layers(
             "title_fontsize": SMALL_LEGEND_TITLE_SIZE,
         },
     )
-    ax.grid(True, linestyle="--", alpha=0.6)
+    ax.grid(True, linestyle="--", alpha=0.3)
     if all_gaps:
         ticks, labels = sparse_value_ticks(all_gaps)
         ax.set_xticks(ticks)
@@ -131,6 +137,20 @@ def run_gap_drift(
 
     _plot_all_layers(all_layer_results, os.path.join(out_subdir, "gap_drift_sample_pv.pdf"))
 
-    with open(os.path.join(out_subdir, "gap_drift_metrics.json"), "w", encoding="utf-8") as f:
-        json.dump(summary, f, indent=2, ensure_ascii=False)
+    metrics_path = os.path.join(out_subdir, "gap_drift_metrics.json")
+    fd, tmp_path = tempfile.mkstemp(
+        dir=out_subdir, prefix=".gap_drift_metrics.", suffix=".tmp"
+    )
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(summary, f, indent=2, ensure_ascii=False)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp_path, metrics_path)
+    except BaseException:
+        try:
+            os.unlink(tmp_path)
+        except FileNotFoundError:
+            pass
+        raise
     print(f"  Gap drift results saved to {out_subdir}")

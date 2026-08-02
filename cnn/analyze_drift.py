@@ -60,6 +60,10 @@ def parse_args():
                         help="Skip per-task activation histograms in reference drift")
     parser.add_argument("--skip_umap", action="store_true",
                         help="Skip sample UMAP visualization")
+    parser.add_argument("--only_umap", action="store_true",
+                        help="Build the representation cache and run only sample UMAP")
+    parser.add_argument("--only_aggregate_metrics", action="store_true",
+                        help="Run only reference, sample-similarity evolution, and gap metrics")
     parser.add_argument("--skip_model_sim", action="store_true",
                         help="Skip model pairwise cosine similarity (not needed for report)")
     parser.add_argument("--skip_gap_drift", action="store_true",
@@ -70,7 +74,7 @@ def parse_args():
                         choices=["class", "checkpoint"],
                         help="Color UMAP points by class label or checkpoint index")
     parser.add_argument("--umap_pca_var", type=float, default=0.90,
-                        help="Keep PCA components explaining this fraction of variance before UMAP (0 to skip PCA)")
+                        help="Enable the fixed 512-component PCA cap before UMAP; use 0 to skip PCA")
     parser.add_argument("--umap_trajectory", action="store_true",
                         help="Draw trajectory lines connecting same sample across checkpoints")
     # [exp-b] network-health + subspace-overlap options
@@ -151,6 +155,11 @@ def setup_environment(args):
 
 def main():
     args = parse_args()
+    args.ckpt_dir = os.path.abspath(args.ckpt_dir)
+    if args.output_dir is not None:
+        args.output_dir = os.path.abspath(args.output_dir)
+    os.chdir(os.path.dirname(os.path.abspath(__file__)))
+
     model, probe_loader, layer_names, device, data_manager, increment = setup_environment(args)  # [exp-b] +data_manager,increment
 
     print("=" * 60)
@@ -175,6 +184,49 @@ def main():
     )
     print(f"  Cache built: {len(reps_cache)} checkpoints × {len(layer_names)} layers, "
           f"N={labels.shape[0]} probe samples")
+
+    if args.only_aggregate_metrics:
+        print("\nRunning aggregate metrics only...")
+        run_reference_drift(
+            reps_cache=reps_cache,
+            layer_names=layer_names,
+            output_dir=args.output_dir,
+            plot_distributions=False,
+        )
+        run_sample_similarity_evolution(
+            reps_cache=reps_cache,
+            labels=labels,
+            layer_names=layer_names,
+            output_dir=args.output_dir,
+        )
+        run_gap_drift(
+            reps_cache=reps_cache,
+            layer_names=layer_names,
+            output_dir=args.output_dir,
+        )
+        print("\n" + "=" * 60)
+        print("AGGREGATE METRICS COMPLETE")
+        print(f"Results saved to: {args.output_dir}")
+        print("=" * 60)
+        return
+
+    if args.only_umap:
+        print("\nRunning sample UMAP visualization only...")
+        run_sample_umap(
+            reps_cache=reps_cache,
+            labels=labels,
+            layer_names=layer_names,
+            output_dir=args.output_dir,
+            pca_var_threshold=args.umap_pca_var,
+            color_by=args.umap_color_by,
+            show_trajectory=args.umap_trajectory,
+            save_pca_diagnostics=False,
+        )
+        print("\n" + "=" * 60)
+        print("UMAP ANALYSIS COMPLETE")
+        print(f"Results saved to: {args.output_dir}")
+        print("=" * 60)
+        return
 
     # 1. Reference-anchored drift
     print("\n[1/6] Running reference drift analysis...")

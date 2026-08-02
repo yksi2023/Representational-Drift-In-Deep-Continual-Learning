@@ -142,7 +142,7 @@ def lambda_label(value):
     return f"{value:.6g}".replace("-", "m").replace(".", "p")
 
 
-def plot_accuracy_matrix(matrix, anchor_lambda, n_seeds, path):
+def plot_accuracy_matrix(matrix, path):
     fig, ax = plt.subplots(figsize=(6.4, 5.6))
     image = ax.imshow(matrix, cmap="viridis", vmin=0, vmax=1, aspect="equal")
     ax.set_box_aspect(1)
@@ -152,7 +152,6 @@ def plot_accuracy_matrix(matrix, anchor_lambda, n_seeds, path):
     ax.set_yticks(ticks, [str(value + 1) for value in ticks])
     ax.set_xlabel("After Training on Task")
     ax.set_ylabel("Evaluated Task")
-    ax.set_title(f"lambda={anchor_lambda:g} (n={n_seeds} seeds)")
     fig.colorbar(image, ax=ax, fraction=0.046, pad=0.04, label="Accuracy")
     fig.tight_layout()
     fig.savefig(path, bbox_inches="tight", pad_inches=0.03)
@@ -204,8 +203,7 @@ def make_accuracy_report(run_dirs, output_dir):
         os.makedirs(group_dir, exist_ok=True)
         np.savetxt(os.path.join(group_dir, "accuracy_matrix.csv"), matrix, delimiter=",", fmt="%.8g")
         plot_accuracy_matrix(
-            matrix, anchor_lambda, len(groups[anchor_lambda]),
-            os.path.join(group_dir, "accuracy_matrix.pdf"),
+            matrix, os.path.join(group_dir, "accuracy_matrix.pdf"),
         )
     plot_matrix_curves(means, matrix_dir)
 

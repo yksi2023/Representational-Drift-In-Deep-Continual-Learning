@@ -7,8 +7,10 @@ are performed; the script is pure CPU and finishes in seconds.
 Outputs (per method):
   1. accuracy_matrix.pdf              -- task × stage accuracy heatmap (mean)
   2. similarity_matrix_<layer>.pdf    -- pairwise cosine similarity heatmap (mean)
-  3. reference_drift.pdf              -- cosine sim & L2 vs task index (mean ± std)
-  4. gap_drift_sample_pv.pdf          -- Sample-PV Pearson corr vs task gap (mean ± std)
+  3. sample_similarity_cka.pdf        -- CKA vs task index (mean ± std)
+  4. sample_similarity_frobenius_norm.pdf -- Frobenius norm vs task index (mean ± std)
+  5. reference_drift.pdf              -- cosine sim & L2 vs task index (mean ± std)
+  6. gap_drift_sample_pv.pdf          -- Sample-PV Pearson corr vs task gap (mean ± std)
 
 Usage:
     python aggregate_seeds.py \\
@@ -21,6 +23,7 @@ Usage:
 import argparse
 import glob
 import json
+import math
 import os
 from collections import defaultdict
 from typing import Dict, List, Optional, Tuple
@@ -33,9 +36,14 @@ import numpy as np
 from src.analysis._plot_utils import (
     SINGLE_FIGSIZE,
     WIDE_FIGSIZE,
+    LEGEND_FONT_SIZE,
+    LEGEND_TITLE_SIZE,
     SMALL_LEGEND_FONT_SIZE,
     SMALL_LEGEND_TITLE_SIZE,
     apply_paper_axis_style,
+    layer_errorbar_kwargs,
+    layer_marker_map,
+    layer_sequential_color_map,
     savefig_compact,
     sparse_ticks,
     sparse_value_ticks,
@@ -118,12 +126,40 @@ def load_reference_drift(exp_dir: str) -> Optional[List[dict]]:
         return json.load(f)
 
 
+def load_sample_similarity_evolution(
+    exp_dir: str,
+    layers: List[str],
+) -> Optional[Dict[str, List[dict]]]:
+    """Load per-layer CKA and Frobenius evolution metrics."""
+    path = os.path.join(
+        exp_dir,
+        "drift_analysis",
+        "sample_similarity_evolution",
+        "similarity_evolution_metrics.json",
+    )
+    if not os.path.exists(path):
+        return None
+    with open(path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+    result = {layer: data[layer] for layer in layers if layer in data}
+    return result if result else None
+
+
+def remove_stale_plot(output_dir: str, filename: str) -> None:
+    """Remove an old aggregate plot when its current source data is unavailable."""
+    path = os.path.join(output_dir, filename)
+    if os.path.exists(path):
+        os.remove(path)
+        print(f"  Removed stale {filename}")
+
+
 # ── plot 1: accuracy matrix ──────────────────────────────────────────────────
 
 def plot_avg_accuracy_matrix(
     matrices: List[np.ndarray],
     method: str,
     output_dir: str,
+    vmax: Optional[float] = None,
 ):
     """Average accuracy matrices across seeds and plot heatmap."""
     stacked = np.stack(matrices, axis=0)  # (S, T, T)
@@ -132,14 +168,16 @@ def plot_avg_accuracy_matrix(
     n_tasks = mean_matrix.shape[0]
 
     fig, ax = plt.subplots(figsize=SINGLE_FIGSIZE)
-    im = ax.imshow(mean_matrix, cmap="viridis", vmin=0, vmax=1, aspect="equal")
+    im = ax.imshow(mean_matrix, cmap="viridis", vmin=0, vmax=vmax, aspect="equal")
     ax.set_box_aspect(1)
     sp, sl = sparse_ticks(n_tasks)
     ax.set_xticks(sp); ax.set_xticklabels(sl)
-    ax.set_yticks(sp); ax.set_yticklabels(sl)
     ax.set_xlabel("After Training on Task")
-    ax.set_ylabel("Evaluated Task")
-    ax.set_title(f"{method} (n={len(matrices)} seeds)", fontsize=16)
+    if method == "normal":
+        ax.set_yticks(sp); ax.set_yticklabels(sl)
+        ax.set_ylabel("Evaluated Task")
+    else:
+        ax.set_yticks([])
     apply_paper_axis_style(ax)
     path = os.path.join(output_dir, "accuracy_matrix.pdf")
     savefig_compact(fig, path)
@@ -160,15 +198,17 @@ def plot_avg_similarity_matrix(
     mean_sim = np.nanmean(stacked, axis=0)
 
     n = mean_sim.shape[0]
-    fig, ax = plt.subplots(figsize=WIDE_FIGSIZE)
+    fig, ax = plt.subplots(figsize=SINGLE_FIGSIZE)
     im = ax.imshow(mean_sim, cmap="viridis", vmin=0, vmax=1, aspect="equal")
     ax.set_box_aspect(1)
     sp, sl = sparse_ticks(n)
     ax.set_xticks(sp); ax.set_xticklabels(sl)
-    ax.set_yticks(sp); ax.set_yticklabels(sl)
     ax.set_xlabel("Model after Task")
-    ax.set_ylabel("Model after Task")
-    ax.set_title(f"{method} – {layer} (n={len(sim_matrices)} seeds)", fontsize=16)
+    if method == "normal":
+        ax.set_yticks(sp); ax.set_yticklabels(sl)
+        ax.set_ylabel("Model after Task")
+    else:
+        ax.set_yticks([])
     apply_paper_axis_style(ax)
     safe_layer = layer.replace(".", "_").replace("/", "_")
     path = os.path.join(output_dir, f"similarity_matrix_{safe_layer}.pdf")
@@ -177,7 +217,88 @@ def plot_avg_similarity_matrix(
     print(f"  [{method}] similarity_matrix_{safe_layer}.pdf  ({len(sim_matrices)} seeds)")
 
 
-# ── plot 3: gap drift ────────────────────────────────────────────────────────
+# ── plot 3: sample similarity evolution ─────────────────────────────────────
+
+def plot_avg_sample_similarity_evolution(
+    all_seed_metrics: List[Dict[str, List[dict]]],
+    layers: List[str],
+    method: str,
+    output_dir: str,
+):
+    """Average CKA and Frobenius curves across seeds into separate figures."""
+    grouped: Dict[str, Dict[int, Dict[str, List[float]]]] = defaultdict(
+        lambda: defaultdict(lambda: defaultdict(list))
+    )
+    for seed_metrics in all_seed_metrics:
+        for layer, entries in seed_metrics.items():
+            for entry in entries:
+                task = int(entry["task"])
+                grouped[layer][task]["cka"].append(float(entry["cka"]))
+                grouped[layer][task]["frobenius_norm"].append(
+                    float(entry["frobenius_norm"])
+                )
+
+    plotted_layers = [layer for layer in layers if layer in grouped]
+    colors = layer_sequential_color_map(plotted_layers)
+    markers = layer_marker_map(plotted_layers)
+    specifications = (
+        ("cka", "CKA (vs Task 0)", "sample_similarity_cka.pdf", (0, 1.05)),
+        (
+            "frobenius_norm",
+            "Frobenius Norm (vs Task 0)",
+            "sample_similarity_frobenius_norm.pdf",
+            None,
+        ),
+    )
+
+    for metric, ylabel, filename, ylim in specifications:
+        fig, ax = plt.subplots(figsize=WIDE_FIGSIZE)
+        all_tasks: List[int] = []
+        for layer in plotted_layers:
+            task_data = grouped[layer]
+            tasks = sorted(task_data)
+            values = [task_data[task][metric] for task in tasks]
+            means = [np.mean(items) for items in values]
+            stds = [np.std(items) for items in values]
+            all_tasks.extend(tasks)
+            ax.errorbar(
+                tasks,
+                means,
+                yerr=stds,
+                label=layer,
+                **layer_errorbar_kwargs(colors[layer], markers[layer]),
+            )
+
+        ax.set_xlabel("Task")
+        ax.set_ylabel(ylabel)
+        if ylim is not None:
+            ax.set_ylim(*ylim)
+        else:
+            ax.set_ylim(bottom=0)
+        if all_tasks:
+            ticks, labels = sparse_value_ticks(all_tasks)
+            ax.set_xticks(ticks)
+            ax.set_xticklabels(labels)
+        apply_paper_axis_style(
+            ax,
+            legend=True,
+            legend_kwargs={
+                "fontsize": SMALL_LEGEND_FONT_SIZE,
+                "title_fontsize": SMALL_LEGEND_TITLE_SIZE,
+            },
+        )
+        ax.xaxis.label.set_size(24)
+        ax.yaxis.label.set_size(24)
+        ax.tick_params(axis="both", labelsize=20)
+        ax.grid(True, linestyle="--", alpha=0.3)
+
+        path = os.path.join(output_dir, filename)
+        savefig_compact(fig, path)
+        plt.close(fig)
+        print(f"  [{method}] {filename}  ({len(all_seed_metrics)} seeds)")
+
+
+# ── plot 4: reference drift ─────────────────────────────────────────────────
 
 def plot_avg_reference_drift(
     all_seed_metrics: List[List[dict]],
@@ -202,38 +323,42 @@ def plot_avg_reference_drift(
             grouped[layer][tt]["shuffled"].append(entry["shuffled_sim_mean"])
 
     layers = sorted(grouped.keys())
-    cmap = plt.get_cmap("tab10")
+    colors = layer_sequential_color_map(layers)
+    markers = layer_marker_map(layers)
 
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 6))
     all_tasks: List[int] = []
 
-    for idx, layer in enumerate(layers):
+    for layer in layers:
         task_data = grouped[layer]
         sorted_tasks = sorted(task_data.keys())
         all_tasks.extend(sorted_tasks)
-        color = cmap(idx % 10)
+        color = colors[layer]
 
         cos_mean = [np.mean(task_data[t]["cosine"]) for t in sorted_tasks]
         cos_std = [np.std(task_data[t]["cosine"]) for t in sorted_tasks]
         shuf_mean = [np.mean(task_data[t]["shuffled"]) for t in sorted_tasks]
 
-        ax1.errorbar(sorted_tasks, cos_mean, yerr=cos_std, marker="o", capsize=4,
-                     label=layer, color=color, linewidth=1.5, markersize=5)
+        ax1.errorbar(
+            sorted_tasks, cos_mean, yerr=cos_std, label=layer,
+            **layer_errorbar_kwargs(color, markers[layer]),
+        )
         ax1.plot(sorted_tasks, shuf_mean, linestyle="--", color=color, alpha=0.4)
 
         l2_mean = [np.mean(task_data[t]["l2"]) for t in sorted_tasks]
         l2_std = [np.std(task_data[t]["l2"]) for t in sorted_tasks]
-        ax2.errorbar(sorted_tasks, l2_mean, yerr=l2_std, marker="o", capsize=4,
-                     label=layer, color=color, linewidth=1.5, markersize=5)
+        ax2.errorbar(
+            sorted_tasks, l2_mean, yerr=l2_std, label=layer,
+            **layer_errorbar_kwargs(color, markers[layer]),
+        )
 
     ax1.set_xlabel("Task Index")
     ax1.set_ylabel("Cosine Similarity")
-    ax1.set_title(f"{method} (n={len(all_seed_metrics)} seeds)", fontsize=14)
     apply_paper_axis_style(
         ax1, legend=True,
         legend_kwargs={"fontsize": SMALL_LEGEND_FONT_SIZE, "title_fontsize": SMALL_LEGEND_TITLE_SIZE},
     )
-    ax1.grid(True, linestyle="--", alpha=0.6)
+    ax1.grid(True, linestyle="--", alpha=0.3)
 
     ax2.set_xlabel("Task Index")
     ax2.set_ylabel("L2 Distance")
@@ -241,7 +366,7 @@ def plot_avg_reference_drift(
         ax2, legend=True,
         legend_kwargs={"fontsize": SMALL_LEGEND_FONT_SIZE, "title_fontsize": SMALL_LEGEND_TITLE_SIZE},
     )
-    ax2.grid(True, linestyle="--", alpha=0.6)
+    ax2.grid(True, linestyle="--", alpha=0.3)
 
     if all_tasks:
         ticks, labels = sparse_value_ticks(all_tasks)
@@ -255,7 +380,7 @@ def plot_avg_reference_drift(
     print(f"  [{method}] reference_drift.pdf  ({len(all_seed_metrics)} seeds)")
 
 
-# ── plot 4: gap drift ────────────────────────────────────────────────────────
+# ── plot 5: gap drift ────────────────────────────────────────────────────────
 
 def plot_avg_gap_drift(
     all_seed_results: List[Dict[str, Tuple[List[int], List[float]]]],
@@ -267,11 +392,14 @@ def plot_avg_gap_drift(
     all_seed_results: list of {layer: (gaps, means)} per seed.
     """
     layer_names = list(all_seed_results[0].keys())
-    fig, ax = plt.subplots(figsize=WIDE_FIGSIZE)
-    cmap = plt.get_cmap("tab10")
+    fig, ax = plt.subplots(figsize=(8.8, 7.5))
+    n_layers = len(layer_names)
+    blue_shades = plt.cm.Blues(
+        np.linspace(0.35, 0.85, n_layers) if n_layers > 1 else np.array([0.7])
+    )
     all_gaps_union: List[int] = []
 
-    for idx, layer in enumerate(layer_names):
+    for layer, color in zip(layer_names, blue_shades):
         gap_to_values: Dict[int, List[float]] = defaultdict(list)
         for seed_result in all_seed_results:
             if layer not in seed_result:
@@ -285,23 +413,35 @@ def plot_avg_gap_drift(
         avg = [np.mean(gap_to_values[g]) for g in gaps_sorted]
         std = [np.std(gap_to_values[g]) for g in gaps_sorted]
 
-        color = cmap(idx % 10)
-        ax.errorbar(gaps_sorted, avg, yerr=std, marker="o", capsize=3,
-                    label=layer, color=color, linewidth=1.5, markersize=4)
+        ax.errorbar(
+            gaps_sorted, avg, yerr=std, label=layer,
+            **{
+                **layer_errorbar_kwargs(color, "o"),
+                "linewidth": 5.0,
+                "markersize": 11,
+                "markeredgecolor": "none",
+                "markeredgewidth": 0,
+                "elinewidth": 2.5,
+                "capthick": 2.5,
+                "capsize": 5,
+            },
+        )
 
     ax.set_xlabel("Task Gap")
-    ax.set_ylabel("Pearson Correlation")
     ax.set_ylim(-0.1, 1.05)
-    ax.set_title(f"{method} (n={len(all_seed_results)} seeds)", fontsize=16)
+    if method == "normal":
+        ax.set_ylabel("Pearson Correlation")
+    else:
+        ax.set_yticks([])
     apply_paper_axis_style(
-        ax, legend=True,
+        ax, legend=(method == "normal"),
         legend_kwargs={
-            "loc": "lower left",
-            "fontsize": SMALL_LEGEND_FONT_SIZE,
-            "title_fontsize": SMALL_LEGEND_TITLE_SIZE,
+            "loc": "upper right",
+            "fontsize": LEGEND_FONT_SIZE,
+            "title_fontsize": LEGEND_TITLE_SIZE,
         },
     )
-    ax.grid(True, linestyle="--", alpha=0.6)
+    ax.grid(True, linestyle="--", alpha=0.3)
     if all_gaps_union:
         ticks, labels = sparse_value_ticks(all_gaps_union)
         ax.set_xticks(ticks); ax.set_xticklabels(labels)
@@ -342,6 +482,30 @@ def main():
     print(f"Output: {args.output_dir}")
     print()
 
+    # ── Pre-pass: compute global vmax for accuracy matrices ──
+    global_acc_vmax: Optional[float] = None
+    method_acc_matrices: Dict[str, List[np.ndarray]] = {}
+    for method in methods:
+        seed_dirs = discover_seed_dirs(args.exp_root, args.prefix, method)
+        mats = []
+        for sd in seed_dirs:
+            m = load_accuracy_matrix(sd)
+            if m is not None:
+                mats.append(m)
+        method_acc_matrices[method] = mats
+        if mats:
+            stacked = np.stack(mats, axis=0)
+            mean_mat = np.nanmax(stacked)
+            if math.isfinite(mean_mat):
+                if global_acc_vmax is None or mean_mat > global_acc_vmax:
+                    global_acc_vmax = float(mean_mat)
+
+    os.makedirs(args.output_dir, exist_ok=True)
+    with open(os.path.join(args.output_dir, "accuracy_matrix_vmax.txt"), "w") as f:
+        f.write(f"Global accuracy matrix vmax: {global_acc_vmax}\n")
+    print(f"Global accuracy matrix vmax: {global_acc_vmax}")
+    print()
+
     for method in methods:
         seed_dirs = discover_seed_dirs(args.exp_root, args.prefix, method)
         if not seed_dirs:
@@ -355,13 +519,9 @@ def main():
         os.makedirs(method_out, exist_ok=True)
 
         # ── Plot 1: accuracy matrix ──
-        acc_matrices = []
-        for sd in seed_dirs:
-            m = load_accuracy_matrix(sd)
-            if m is not None:
-                acc_matrices.append(m)
+        acc_matrices = method_acc_matrices.get(method, [])
         if acc_matrices:
-            plot_avg_accuracy_matrix(acc_matrices, method, method_out)
+            plot_avg_accuracy_matrix(acc_matrices, method, method_out, vmax=global_acc_vmax)
         else:
             print(f"  [{method}] No performance_history.json found, skipping accuracy plot.")
 
@@ -378,7 +538,21 @@ def main():
                 print(f"  [{method}] No similarity .npy for {ln}, skipping. "
                       f"Run analysis_cnn.sh first.")
 
-        # ── Plot 3: reference drift (from pre-computed metrics.json) ──
+        # ── Plot 3: sample similarity evolution ──
+        sample_similarity_results = []
+        for sd in seed_dirs:
+            result = load_sample_similarity_evolution(sd, layers)
+            if result is not None:
+                sample_similarity_results.append(result)
+        if sample_similarity_results:
+            plot_avg_sample_similarity_evolution(
+                sample_similarity_results, layers, method, method_out,
+            )
+        else:
+            print(f"  [{method}] No sample similarity evolution metrics found, skipping. "
+                  f"Run analysis_cnn.sh first without --skip_sample_sim.")
+
+        # ── Plot 4: reference drift (from pre-computed metrics.json) ──
         ref_drift_results = []
         for sd in seed_dirs:
             r = load_reference_drift(sd)
@@ -390,7 +564,7 @@ def main():
             print(f"  [{method}] No reference drift metrics.json found, skipping. "
                   f"Run analysis_cnn.sh first.")
 
-        # ── Plot 4: gap drift (from pre-computed JSON) ──
+        # ── Plot 5: gap drift (from pre-computed JSON) ──
         gap_results: List[Dict[str, Tuple[List[int], List[float]]]] = []
         for sd in seed_dirs:
             g = load_gap_drift(sd, layers)
@@ -399,6 +573,7 @@ def main():
         if gap_results:
             plot_avg_gap_drift(gap_results, method, method_out)
         else:
+            remove_stale_plot(method_out, "gap_drift_sample_pv.pdf")
             print(f"  [{method}] No gap drift metrics found, skipping. "
                   f"Run analysis_cnn.sh first.")
 

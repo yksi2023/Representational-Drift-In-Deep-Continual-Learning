@@ -32,8 +32,8 @@ import torch
 from src.analysis._plot_utils import (
     SINGLE_FIGSIZE,
     WIDE_FIGSIZE,
-    SMALL_LEGEND_FONT_SIZE,
-    SMALL_LEGEND_TITLE_SIZE,
+    LEGEND_FONT_SIZE,
+    LEGEND_TITLE_SIZE,
     apply_paper_axis_style,
     savefig_compact,
     sparse_ticks,
@@ -140,11 +140,13 @@ def plot_avg_accuracy_matrix(
     ax.imshow(mean_matrix, cmap="viridis", vmin=0, vmax=1, aspect="equal")
     ax.set_box_aspect(1)
     sp, sl = sparse_ticks(n_tasks)
-    ax.set_xticks(sp); ax.set_xticklabels(sl)
     ax.set_yticks(sp); ax.set_yticklabels(sl)
-    ax.set_xlabel("After Training on Task")
     ax.set_ylabel("Evaluated Task")
-    ax.set_title(f"{method} (n={len(matrices)} seeds)", fontsize=16)
+    if method == "replay":
+        ax.set_xticks(sp); ax.set_xticklabels(sl)
+        ax.set_xlabel("After Training on Task")
+    else:
+        ax.set_xticks([])
     apply_paper_axis_style(ax)
     path = os.path.join(output_dir, "accuracy_matrix.pdf")
     savefig_compact(fig, path)
@@ -183,11 +185,13 @@ def plot_avg_pearson_matrix(
     ax.imshow(mean_mat, cmap="viridis", vmin=0, vmax=1, aspect="equal")
     ax.set_box_aspect(1)
     sp, sl = sparse_ticks(n)
-    ax.set_xticks(sp); ax.set_xticklabels(sl)
     ax.set_yticks(sp); ax.set_yticklabels(sl)
-    ax.set_xlabel("Model after Task")
     ax.set_ylabel("Model after Task")
-    ax.set_title(f"{method} – {probe_task} (n={len(matrices)} seeds)", fontsize=16)
+    if method == "replay":
+        ax.set_xticks(sp); ax.set_xticklabels(sl)
+        ax.set_xlabel("Model after Task")
+    else:
+        ax.set_xticks([])
     apply_paper_axis_style(ax)
     path = os.path.join(output_dir, f"pearson_matrix_{probe_task}.pdf")
     savefig_compact(fig, path)
@@ -240,21 +244,24 @@ def plot_avg_vector_drift(
         ax.errorbar(gaps_sorted, avg, yerr=std, marker="o", capsize=4,
                     label=vec_name, color=colors[vec_name])
 
-    ax.set_xlabel("Task Gap")
     ax.set_ylabel("Pearson Correlation")
     ax.set_ylim(-0.1, 1.05)
-    ax.set_title(f"{method} – {probe_task} (n={len(all_seed_results)} seeds)", fontsize=14)
+    if method == "replay":
+        ax.set_xlabel("Task Gap")
     apply_paper_axis_style(
-        ax, legend=True,
+        ax, legend=(method == "normal"),
         legend_kwargs={
-            "fontsize": SMALL_LEGEND_FONT_SIZE,
-            "title_fontsize": SMALL_LEGEND_TITLE_SIZE,
+            "loc": "upper right",
+            "fontsize": LEGEND_FONT_SIZE,
+            "title_fontsize": LEGEND_TITLE_SIZE,
         },
     )
     ax.grid(True, linestyle="--", alpha=0.6)
-    if all_gaps:
+    if method == "replay" and all_gaps:
         ticks, labels = sparse_value_ticks(all_gaps)
         ax.set_xticks(ticks); ax.set_xticklabels(labels)
+    else:
+        ax.set_xticks([])
 
     path = os.path.join(output_dir, f"vector_drift_{probe_task}.pdf")
     savefig_compact(fig, path)

@@ -6,8 +6,8 @@
 #
 # Aggregate multi-seed CNN experiments into per-method averaged plots.
 #
-# Produces 3 plots per method (averaged across seeds):
-#   accuracy_matrix.pdf, similarity_matrix_<layer>.pdf, gap_drift_sample_pv.pdf
+# Produces per-method plots averaged across seeds, including accuracy/model
+# similarity matrices, sample similarity, reference drift, and gap drift.
 #
 # Submit:
 #   sbatch analysis_cnn_agg.sh 1

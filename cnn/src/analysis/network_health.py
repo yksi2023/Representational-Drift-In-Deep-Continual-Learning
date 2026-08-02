@@ -17,6 +17,12 @@ from typing import Dict, List
 import matplotlib.pyplot as plt
 import torch
 
+from src.analysis._plot_utils import (
+    layer_color_map,
+    layer_line_kwargs,
+    layer_marker_map,
+)
+
 
 def _participation_ratio(reps: torch.Tensor) -> float:
     """PR = (sum lambda_i)^2 / sum lambda_i^2 of the representation covariance.
@@ -85,16 +91,20 @@ def run_network_health(
 
     # Plots: PR and dead-unit fraction vs checkpoint.
     fig, axes = plt.subplots(1, 2, figsize=(16, 6))
+    colors = layer_color_map(layer_names)
+    markers = layer_marker_map(layer_names)
     for ln in layer_names:
         ti = metrics[ln]["task_indices"]
-        axes[0].plot(ti, metrics[ln]["participation_ratio"], marker="o", label=ln)
-        axes[1].plot(ti, metrics[ln]["dead_unit_fraction"], marker="o", label=ln)
+        style = layer_line_kwargs(colors[ln], markers[ln])
+        axes[0].plot(ti, metrics[ln]["participation_ratio"], label=ln, **style)
+        axes[1].plot(ti, metrics[ln]["dead_unit_fraction"], label=ln, **style)
     axes[0].set_xlabel("Checkpoint")
     axes[0].set_ylabel("Participation ratio")
     axes[1].set_xlabel("Checkpoint")
     axes[1].set_ylabel("Dead-unit fraction")
     for ax in axes:
         ax.legend(fontsize=14)
+        ax.grid(True, linestyle="--", alpha=0.3)
     fig.tight_layout()
     fig_path = os.path.join(output_dir, "network_health.pdf")
     fig.savefig(fig_path)
@@ -189,11 +199,19 @@ def run_subspace_overlap(
     print(f"  Subspace-overlap metrics saved to {json_path}")
 
     fig, ax = plt.subplots(figsize=(10, 6))
+    colors = layer_color_map(layer_names)
+    markers = layer_marker_map(layer_names)
     for ln in layer_names:
-        ax.plot(range(num_tasks - 1), metrics[ln]["overlap"], marker="o", label=ln)
+        ax.plot(
+            range(num_tasks - 1),
+            metrics[ln]["overlap"],
+            label=ln,
+            **layer_line_kwargs(colors[ln], markers[ln]),
+        )
     ax.set_xlabel("Successive task pair (k, k+1)")
     ax.set_ylabel("Coding-subspace overlap")
     ax.legend(fontsize=14)
+    ax.grid(True, linestyle="--", alpha=0.3)
     fig.tight_layout()
     fig_path = os.path.join(output_dir, "subspace_overlap.pdf")
     fig.savefig(fig_path)

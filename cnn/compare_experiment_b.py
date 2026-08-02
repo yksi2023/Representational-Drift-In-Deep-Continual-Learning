@@ -290,8 +290,6 @@ def _style_ax(ax, xlabel: str, ylabel: str, title: str = "") -> None:
 
 def _plot_accuracy_matrix(
     matrix: np.ndarray,
-    lam: float,
-    n_seeds: int,
     output_path: str,
 ) -> None:
     n_tasks, n_stages = matrix.shape
@@ -311,7 +309,6 @@ def _plot_accuracy_matrix(
     ax.set_yticklabels([str(t + 1) for t in row_ticks])
     ax.set_xlabel("After Training on Task")
     ax.set_ylabel("Evaluated Task")
-    ax.set_title(f"lambda={lam:.6g} (n={n_seeds} seeds)")
     fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04, label="Accuracy")
     fig.tight_layout()
     fig.savefig(output_path, dpi=150, bbox_inches="tight", pad_inches=0.02)
@@ -405,8 +402,6 @@ def make_accuracy_matrix_report(run_dirs: List[str], out_dir: str) -> None:
         )
         _plot_accuracy_matrix(
             mean_matrix,
-            lam,
-            len(matrix_groups[lam]),
             os.path.join(group_dir, "accuracy_matrix.pdf"),
         )
 
@@ -426,7 +421,7 @@ def make_focus_plots(agg: List[dict], out_dir: str) -> None:
 
     baseline = next((entry for entry in rows if entry["anchor_lambda"] == 0.0), None)
     anchored = [entry for entry in rows if entry["anchor_lambda"] > 0.0]
-    lambda_rows = [entry for entry in anchored if entry["anchor_lambda"] >= 0.3]
+    lambda_rows = [entry for entry in anchored if 0.3 <= entry["anchor_lambda"] <= 1000]
     if not anchored:
         print("No positive anchor lambdas found; skipping focused Experiment-B figures.")
         return
@@ -464,8 +459,8 @@ def make_focus_plots(agg: List[dict], out_dir: str) -> None:
     ax.grid(True, which="both", linestyle=":", alpha=0.5)
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
-    ax.legend(frameon=False, fontsize=8.8, loc="best")
-    ax.margins(y=0.14)
+    ax.legend(frameon=False, fontsize=12, loc="lower left")
+    ax.margins(y=0.05)
     fig.tight_layout()
     path = os.path.join(out_dir, "task1_fwd_acc_vs_lambda.pdf")
     fig.savefig(path, bbox_inches="tight", pad_inches=0.03)
@@ -476,7 +471,7 @@ def make_focus_plots(agg: List[dict], out_dir: str) -> None:
     if not drift_rows:
         print("No final-drift values found; skipping forward-accuracy vs drift figure.")
         return
-    fig, ax = plt.subplots(figsize=(6.4, 4.25))
+    fig, ax = plt.subplots(figsize=(6.6, 4.25))
     drift_x = [entry["final_drift_mean"] for entry in drift_rows]
     fwd_y = [entry["plasticity_best_val_acc_mean"] for entry in drift_rows]
     fwd_yerr = [entry["plasticity_best_val_acc_ci"] for entry in drift_rows]
@@ -498,7 +493,7 @@ def make_focus_plots(agg: List[dict], out_dir: str) -> None:
     ax.grid(True, linestyle=":", alpha=0.5)
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
-    ax.legend(frameon=False, fontsize=9, loc="best")
+    ax.legend(frameon=False, fontsize=12, loc="lower right")
     ax.margins(x=0.12, y=0.16)
     fig.tight_layout()
     path = os.path.join(out_dir, "fwd_acc_vs_final_drift.pdf")
