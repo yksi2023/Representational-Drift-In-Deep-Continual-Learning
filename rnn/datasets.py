@@ -18,7 +18,17 @@ for ruleset, rules in rules_dict.items():
         rule_index_map[ruleset][rule] = ind
 
 def get_rule_index(rule, config):
-    '''get the input index for the given rule'''
+    '''get the input index for the given rule.
+
+    If `config['tasks']` is present (the actual task list used to build this
+    config's n_input/rule_start), the rule index is that task's position in
+    the list, so rule dimensionality exactly matches the number of tasks in
+    the experiment. Otherwise falls back to the fixed 20-slot 'all' ruleset
+    mapping for backward compatibility.
+    '''
+    tasks = config.get('tasks')
+    if tasks is not None:
+        return tasks.index(rule) + config['rule_start']
     return rule_index_map[config['ruleset']][rule] + config['rule_start']
 
 def get_dist(original_dist):
@@ -704,17 +714,30 @@ def get_task_generator(task_name):
     return TASK_REGISTRY[task_name]
 
 
-def get_default_config():
-    """Returns a default configuration for the tasks."""
-    return {
+def get_default_config(tasks=None):
+    """Returns a default configuration for the tasks.
+
+    Args:
+        tasks: Optional list of task names actually used in the experiment.
+            If given, the rule-input dimensionality is sized exactly to
+            `len(tasks)` (instead of the fixed 20-slot 'all' ruleset), and
+            `get_rule_index` will map each task to its position in this
+            list. If omitted, falls back to the fixed 20-rule 'all' scheme
+            for backward compatibility.
+    """
+    n_rules = len(tasks) if tasks is not None else 20
+    config = {
         'dt': 20,
         'alpha': 0.2,
         'rng': np.random.RandomState(),
         'ruleset': 'all',
         'n_eachring': 32,
-        'n_input': 1 + 32 * 2 + 20,   # 1 fix + 2 rings of 32 + 20 rules
-        'n_output': 1 + 32,            # 1 fix + 1 ring of 32
+        'n_input': 1 + 32 * 2 + n_rules,   # 1 fix + 2 rings of 32 + n_rules
+        'n_output': 1 + 32,                # 1 fix + 1 ring of 32
         'rule_start': 1 + 32 * 2,
         'loss_type': 'cross_entropy',
         'sigma_x': 0.01,
     }
+    if tasks is not None:
+        config['tasks'] = list(tasks)
+    return config

@@ -35,8 +35,8 @@ from src.analysis._plot_utils import (
     LEGEND_FONT_SIZE,
     LEGEND_TITLE_SIZE,
     apply_paper_axis_style,
+    hide_axis,
     savefig_compact,
-    sparse_ticks,
     sparse_value_ticks,
 )
 from src.drift_metrics import compute_pairwise_pearson_matrix
@@ -85,6 +85,37 @@ def load_task_names(exp_dir: str) -> List[str]:
     return []
 
 
+TASK_DISPLAY_NAMES = {
+    "fdgo": "Go",
+    "reactgo": "RT Go",
+    "delaygo": "Dly Go",
+    "fdanti": "Anti",
+    "reactanti": "RT Anti",
+    "delayanti": "Dly Anti",
+    "dm1": "DM 1",
+    "dm2": "DM 2",
+    "contextdm1": "Ctx DM 1",
+    "contextdm2": "Ctx DM 2",
+    "multidm": "MultSen DM",
+    "delaydm1": "Dly DM 1",
+    "delaydm2": "Dly DM 2",
+    "contextdelaydm1": "Ctx Dly DM 1",
+    "contextdelaydm2": "Ctx Dly DM 2",
+    "multidelaydm": "MultSen Dly DM",
+    "dmsgo": "DMS",
+    "dmsnogo": "DNMS",
+    "dmcgo": "DMC",
+    "dmcnogo": "DNMC",
+}
+
+
+def task_display_labels(task_names: List[str], n: int) -> List[str]:
+    """Map raw task keys to short display names, falling back to 1-indexed numbers."""
+    if len(task_names) != n:
+        return [str(i + 1) for i in range(n)]
+    return [TASK_DISPLAY_NAMES.get(t, t) for t in task_names]
+
+
 def _reshape_to_3d(flat: np.ndarray, hidden_size: int) -> torch.Tensor:
     B, D = flat.shape
     T = D // hidden_size
@@ -130,24 +161,25 @@ def _correlation_vs_gap(reps_3d: List[torch.Tensor], corr_fn) -> Tuple[List[int]
 # ── plot 1: accuracy matrix ──────────────────────────────────────────────────
 
 def plot_avg_accuracy_matrix(
-    matrices: List[np.ndarray], method: str, output_dir: str,
+    matrices: List[np.ndarray], task_names: List[str], method: str, output_dir: str,
 ):
     stacked = np.stack(matrices, axis=0)
     mean_matrix = np.nanmean(stacked, axis=0)
     n_tasks = mean_matrix.shape[0]
+    labels = task_display_labels(task_names, n_tasks)
 
     fig, ax = plt.subplots(figsize=SINGLE_FIGSIZE)
     ax.imshow(mean_matrix, cmap="viridis", vmin=0, vmax=1, aspect="equal")
     ax.set_box_aspect(1)
-    sp, sl = sparse_ticks(n_tasks)
-    ax.set_yticks(sp); ax.set_yticklabels(sl)
+    positions = list(range(n_tasks))
+    ax.set_yticks(positions); ax.set_yticklabels(labels)
     ax.set_ylabel("Evaluated Task")
-    if method == "replay":
-        ax.set_xticks(sp); ax.set_xticklabels(sl)
-        ax.set_xlabel("After Training on Task")
-    else:
-        ax.set_xticks([])
+    ax.set_xticks(positions); ax.set_xticklabels(labels, rotation=45, ha="right")
+    ax.set_xlabel("After Training on Task")
     apply_paper_axis_style(ax)
+    ax.tick_params(axis="both", labelsize=11)
+    if method != "replay":
+        hide_axis(ax, "x")
     path = os.path.join(output_dir, "accuracy_matrix.pdf")
     savefig_compact(fig, path)
     plt.close()
@@ -181,18 +213,20 @@ def plot_avg_pearson_matrix(
     mean_mat = np.mean(np.stack(matrices), axis=0)
     n = mean_mat.shape[0]
 
+    labels = task_display_labels(task_names, n)
+
     fig, ax = plt.subplots(figsize=SINGLE_FIGSIZE)
     ax.imshow(mean_mat, cmap="viridis", vmin=0, vmax=1, aspect="equal")
     ax.set_box_aspect(1)
-    sp, sl = sparse_ticks(n)
-    ax.set_yticks(sp); ax.set_yticklabels(sl)
+    positions = list(range(n))
+    ax.set_yticks(positions); ax.set_yticklabels(labels)
     ax.set_ylabel("Model after Task")
-    if method == "replay":
-        ax.set_xticks(sp); ax.set_xticklabels(sl)
-        ax.set_xlabel("Model after Task")
-    else:
-        ax.set_xticks([])
+    ax.set_xticks(positions); ax.set_xticklabels(labels, rotation=45, ha="right")
+    ax.set_xlabel("Model after Task")
     apply_paper_axis_style(ax)
+    ax.tick_params(axis="both", labelsize=11)
+    if method != "replay":
+        hide_axis(ax, "x")
     path = os.path.join(output_dir, f"pearson_matrix_{probe_task}.pdf")
     savefig_compact(fig, path)
     plt.close()
@@ -228,7 +262,8 @@ def plot_avg_vector_drift(
         return
 
     colors = {"STPV": "#d62728", "PV": "#1f77b4", "ERV": "#ff7f0e", "TCV": "#2ca02c"}
-    fig, ax = plt.subplots(figsize=WIDE_FIGSIZE)
+    vector_drift_figsize = (WIDE_FIGSIZE[0] / WIDE_FIGSIZE[1] * SINGLE_FIGSIZE[1], SINGLE_FIGSIZE[1])
+    fig, ax = plt.subplots(figsize=vector_drift_figsize)
     all_gaps: List[int] = []
 
     for vec_name in ["STPV", "PV", "ERV", "TCV"]:
@@ -246,10 +281,9 @@ def plot_avg_vector_drift(
 
     ax.set_ylabel("Pearson Correlation")
     ax.set_ylim(-0.1, 1.05)
-    if method == "replay":
-        ax.set_xlabel("Task Gap")
+    ax.set_xlabel("Task Gap")
     apply_paper_axis_style(
-        ax, legend=(method == "normal"),
+        ax, legend=True,
         legend_kwargs={
             "loc": "upper right",
             "fontsize": LEGEND_FONT_SIZE,
@@ -257,11 +291,16 @@ def plot_avg_vector_drift(
         },
     )
     ax.grid(True, linestyle="--", alpha=0.6)
-    if method == "replay" and all_gaps:
+    if all_gaps:
         ticks, labels = sparse_value_ticks(all_gaps)
         ax.set_xticks(ticks); ax.set_xticklabels(labels)
-    else:
-        ax.set_xticks([])
+
+    if method != "replay":
+        hide_axis(ax, "x")
+    if method != "normal":
+        legend = ax.get_legend()
+        if legend is not None:
+            legend.remove()
 
     path = os.path.join(output_dir, f"vector_drift_{probe_task}.pdf")
     savefig_compact(fig, path)
@@ -363,7 +402,7 @@ def main():
         acc_matrices = [load_accuracy_matrix(sd) for sd in seed_dirs]
         acc_matrices = [m for m in acc_matrices if m is not None]
         if acc_matrices:
-            plot_avg_accuracy_matrix(acc_matrices, method, method_out)
+            plot_avg_accuracy_matrix(acc_matrices, task_names, method, method_out)
         else:
             print(f"  [{method}] No performance_history.json found.")
 

@@ -79,3 +79,17 @@ def apply_paper_axis_style(ax, legend: bool = False, legend_kwargs=None) -> None
 def savefig_compact(fig, path: str) -> None:
     """Save with minimal whitespace while preserving labels."""
     fig.savefig(path, bbox_inches="tight", pad_inches=0.02)
+
+
+def hide_axis(ax, axis: str) -> None:
+    """Make an axis's ticks/tick-labels/axis-label invisible in-place.
+
+    Unlike removing ticks/labels outright (`set_xticks([])`), this keeps
+    the tick and label artists present but transparent, so the reserved
+    layout space is identical to the fully-labeled variant. This makes
+    `bbox_inches="tight"` output the same physical PDF size regardless
+    of whether a given plot variant shows its labels or not.
+    """
+    ax.tick_params(axis=axis, colors="none")
+    label = ax.xaxis.label if axis == "x" else ax.yaxis.label
+    label.set_color("none")

@@ -291,7 +291,7 @@ def _extract_or_load_umap_reps(
     with open(exp_config_path, "r", encoding="utf-8") as f:
         exp_config = json.load(f)
 
-    config = get_default_config()
+    config = get_default_config(exp_config.get("tasks"))
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     # Build controlled trial

@@ -70,8 +70,8 @@ def main():
     from src.utils import set_seed
     set_seed(args.seed)
 
-    # Task config
-    config = get_default_config()
+    # Task config (rule-input dim sized to exactly len(args.tasks))
+    config = get_default_config(args.tasks)
 
     # Build model
     model = CognitiveRNN(
