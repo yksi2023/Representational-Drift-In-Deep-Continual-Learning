@@ -6,8 +6,8 @@
 
 set -euo pipefail
 ulimit -n 65536
-module load miniforge3/26.1
-source activate drift
+source /data/apps/miniforge3/26.1/etc/profile.d/conda.sh
+conda activate drift
 
 if [ $# -lt 1 ]; then
     echo "Usage: sbatch tmp_ewc_sweep/rnn_ewc_sweep.sh <idx> [seed]"

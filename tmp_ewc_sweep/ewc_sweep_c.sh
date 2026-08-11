@@ -8,8 +8,8 @@
 # -----------------------------------------------------------------------------
 set -euo pipefail
 ulimit -n 65536
-module load miniforge3/26.1
-source activate drift
+source /data/apps/miniforge3/26.1/etc/profile.d/conda.sh
+conda activate drift
 
 IDX="${1:-1}"
 SEED_STR="${2:-0}"

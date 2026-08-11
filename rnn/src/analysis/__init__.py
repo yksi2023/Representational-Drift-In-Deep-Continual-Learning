@@ -23,7 +23,7 @@ from .reference_drift import run_baseline_drift, run_reference_drift
 from .model_similarity import run_model_similarity
 from .sample_similarity import run_sample_similarity
 from .performance import plot_rnn_performance
-from .temporal_similarity import run_temporal_similarity
+from .temporal_correlation import run_temporal_correlation
 from .vector_drift import run_vector_drift
 from .subspace_drift import run_subspace_drift
 from .sample_umap import run_sample_umap
@@ -34,7 +34,7 @@ __all__ = [
     "run_model_similarity",
     "run_sample_similarity",
     "plot_rnn_performance",
-    "run_temporal_similarity",
+    "run_temporal_correlation",
     "run_vector_drift",
     "run_subspace_drift",
     "run_sample_umap",

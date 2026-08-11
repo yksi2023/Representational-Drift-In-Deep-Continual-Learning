@@ -7,7 +7,8 @@
 # Aggregate multi-seed CNN experiments into per-method averaged plots.
 #
 # Produces per-method plots averaged across seeds, including accuracy/model
-# similarity matrices, sample similarity, reference drift, and gap drift.
+# similarity matrices, sample similarity (curves + CKA matrix + averaged
+# sample-sim heatmaps), reference drift, and gap drift.
 #
 # Submit:
 #   sbatch analysis_cnn_agg.sh 1
@@ -16,8 +17,8 @@
 # -----------------------------------------------------------------------------
 set -euo pipefail
 ulimit -n 65536
-module load miniforge3/26.1
-source activate drift
+source /data/apps/miniforge3/26.1/etc/profile.d/conda.sh
+conda activate drift
 
 if [ $# -lt 1 ]; then
     echo "Usage: bash analysis_cnn_agg.sh <i> [--methods m1,m2,...] [--layers l1,l2,...]"

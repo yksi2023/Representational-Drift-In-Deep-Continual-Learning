@@ -19,6 +19,7 @@ import torch
 
 from src.analysis._plot_utils import (
     layer_color_map,
+    layer_display_name,
     layer_line_kwargs,
     layer_marker_map,
 )
@@ -96,8 +97,8 @@ def run_network_health(
     for ln in layer_names:
         ti = metrics[ln]["task_indices"]
         style = layer_line_kwargs(colors[ln], markers[ln])
-        axes[0].plot(ti, metrics[ln]["participation_ratio"], label=ln, **style)
-        axes[1].plot(ti, metrics[ln]["dead_unit_fraction"], label=ln, **style)
+        axes[0].plot(ti, metrics[ln]["participation_ratio"], label=layer_display_name(ln), **style)
+        axes[1].plot(ti, metrics[ln]["dead_unit_fraction"], label=layer_display_name(ln), **style)
     axes[0].set_xlabel("Checkpoint")
     axes[0].set_ylabel("Participation ratio")
     axes[1].set_xlabel("Checkpoint")
@@ -205,7 +206,7 @@ def run_subspace_overlap(
         ax.plot(
             range(num_tasks - 1),
             metrics[ln]["overlap"],
-            label=ln,
+            label=layer_display_name(ln),
             **layer_line_kwargs(colors[ln], markers[ln]),
         )
     ax.set_xlabel("Successive task pair (k, k+1)")

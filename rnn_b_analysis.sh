@@ -12,8 +12,8 @@
 #   sbatch rnn_b_analysis.sh 1 --report-only
 set -euo pipefail
 ulimit -n 65536
-module load miniforge3/26.1
-source activate drift
+source /data/apps/miniforge3/26.1/etc/profile.d/conda.sh
+conda activate drift
 
 if [ $# -lt 1 ]; then
     echo "Usage: sbatch [slurm opts] rnn_b_analysis.sh <i> [--force | --report-only] [arm_patterns ...]"
@@ -120,7 +120,7 @@ if [ "${REPORT_ONLY}" = false ]; then
                 --exp_dir "${dir}" \
                 --skip_model_sim \
                 --skip_sample_sim \
-                --skip_temporal_sim \
+                --skip_temporal_corr \
                 --skip_vector_drift \
                 --skip_subspace_drift \
                 --skip_performance \

@@ -5,8 +5,8 @@
 #SBATCH --output=logs/%x_%j.out
 set -euo pipefail
 ulimit -n 65536
-module load miniforge3/26.1
-source activate drift
+source /data/apps/miniforge3/26.1/etc/profile.d/conda.sh
+conda activate drift
 
 IDX="${1:-9}"
 SEEDS=(8 9)

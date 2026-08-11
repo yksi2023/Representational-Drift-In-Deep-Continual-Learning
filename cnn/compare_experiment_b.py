@@ -473,16 +473,18 @@ def make_focus_plots(agg: List[dict], out_dir: str) -> None:
         return
     fig, ax = plt.subplots(figsize=(6.6, 4.25))
     drift_x = [entry["final_drift_mean"] for entry in drift_rows]
+    drift_xerr = [entry["final_drift_ci"] for entry in drift_rows]
     fwd_y = [entry["plasticity_best_val_acc_mean"] for entry in drift_rows]
     fwd_yerr = [entry["plasticity_best_val_acc_ci"] for entry in drift_rows]
     ax.errorbar(
-        drift_x, fwd_y, yerr=fwd_yerr,
+        drift_x, fwd_y, xerr=drift_xerr, yerr=fwd_yerr,
         color=task1_color, marker="o", markersize=5.8, linestyle="none",
         capsize=3, elinewidth=1.1, label="Replay + representation anchoring", zorder=3,
     )
     if baseline is not None and math.isfinite(baseline["final_drift_mean"]):
         ax.errorbar(
             baseline["final_drift_mean"], baseline["plasticity_best_val_acc_mean"],
+            xerr=baseline["final_drift_ci"],
             yerr=baseline["plasticity_best_val_acc_ci"],
             color=baseline_color, marker="D", markersize=5.6, linestyle="none",
             capsize=3, elinewidth=1.1, label=r"Replay baseline ($\lambda=0$)", zorder=4,

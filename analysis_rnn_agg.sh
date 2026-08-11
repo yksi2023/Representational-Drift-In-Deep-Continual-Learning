@@ -8,7 +8,8 @@
 # No prior analysis_rnn.sh needed — reads representations/*.npz directly.
 #
 # Produces per method (averaged across seeds):
-#   accuracy_matrix.pdf, pearson_matrix_<probe>.pdf, vector_drift_<probe>.pdf
+#   accuracy_matrix.pdf, pearson_matrix_<probe>.pdf, vector_drift_<probe>.pdf,
+#   temporal_correlation/cross_checkpoint_pearson_<probe>[_fix1|_stim1_go1].pdf
 #
 # Submit:
 #   sbatch analysis_rnn_agg.sh 1
@@ -17,8 +18,8 @@
 # -----------------------------------------------------------------------------
 set -euo pipefail
 ulimit -n 65536
-module load miniforge3/26.1
-source activate drift
+source /data/apps/miniforge3/26.1/etc/profile.d/conda.sh
+conda activate drift
 
 if [ $# -lt 1 ]; then
     echo "Usage: bash analysis_rnn_agg.sh <i> [--methods m1,m2,...] [--probe TASK]"

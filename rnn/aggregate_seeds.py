@@ -4,7 +4,8 @@ Directly reads each seed's representations/<probe>.npz to compute:
   1. accuracy_matrix.pdf          – from performance_history.json (mean across seeds)
   2. pearson_matrix_<probe>.pdf   – pairwise Pearson similarity (mean across seeds)
   3. vector_drift_<probe>.pdf     – STPV/PV/ERV/TCV Pearson vs task gap (mean ± std)
-  4. temporal_similarity/cross_checkpoint_cosine_<probe>.pdf – temporal PV cosine matrix (mean across seeds)
+  4. temporal_correlation/cross_checkpoint_pearson_<probe>[_fix1|_stim1_go1].pdf
+     – temporal PV Pearson correlation matrices (full + epoch splits; mean across seeds)
 
 No GPU needed; no prior analysis_rnn.sh required. Finishes in seconds.
 
@@ -41,7 +42,11 @@ from src.analysis._plot_utils import (
 )
 from src.drift_metrics import compute_pairwise_pearson_matrix
 from src.analysis.reference_drift import _load_reps_from_npz
-from src.analysis.temporal_similarity import _build_full_matrix, _plot_full_matrix
+from src.analysis.temporal_correlation import (
+    _build_full_matrix,
+    _plot_full_matrix,
+    epoch_splits,
+)
 
 
 # ── helpers ──────────────────────────────────────────────────────────────────
@@ -177,7 +182,7 @@ def plot_avg_accuracy_matrix(
     ax.set_xticks(positions); ax.set_xticklabels(labels, rotation=45, ha="right")
     ax.set_xlabel("After Training on Task")
     apply_paper_axis_style(ax)
-    ax.tick_params(axis="both", labelsize=11)
+    ax.tick_params(axis="both", labelsize=18)
     if method != "replay":
         hide_axis(ax, "x")
     path = os.path.join(output_dir, "accuracy_matrix.pdf")
@@ -224,7 +229,7 @@ def plot_avg_pearson_matrix(
     ax.set_xticks(positions); ax.set_xticklabels(labels, rotation=45, ha="right")
     ax.set_xlabel("Model after Task")
     apply_paper_axis_style(ax)
-    ax.tick_params(axis="both", labelsize=11)
+    ax.tick_params(axis="both", labelsize=18)
     if method != "replay":
         hide_axis(ax, "x")
     path = os.path.join(output_dir, f"pearson_matrix_{probe_task}.pdf")
@@ -308,15 +313,18 @@ def plot_avg_vector_drift(
     print(f"  [{method}] vector_drift_{probe_task}.pdf  ({len(all_seed_results)} seeds)")
 
 
-# ── plot 4: temporal similarity ─────────────────────────────────────────────
+# ── plot 4: temporal correlation ────────────────────────────────────────────
 
-def plot_avg_temporal_similarity(
+def plot_avg_temporal_correlation(
     seed_dirs: List[str], probe_task: str, task_names: List[str],
     method: str, output_dir: str, hidden_size: int = 256,
 ):
-    """Average cross-checkpoint temporal similarity matrices across seeds."""
-    matrices = []
-    reps_3d_ref = None
+    """Average cross-checkpoint temporal PV Pearson matrices across seeds.
+
+    Produces the full-trial matrix plus epoch splits (fix1, stim1_go1) when
+    available — same set as ``run_temporal_correlation``.
+    """
+    seed_reps: List[List[torch.Tensor]] = []
     for sd in seed_dirs:
         reps_dir = os.path.join(sd, "representations")
         if not os.path.isdir(reps_dir):
@@ -326,29 +334,41 @@ def plot_avg_temporal_similarity(
         except FileNotFoundError:
             continue
         sorted_idx = sorted(raw.keys())
-        reps_3d = [_reshape_to_3d(raw[k], hidden_size) for k in sorted_idx]
-        mat = _build_full_matrix(reps_3d, metric="cosine")
-        matrices.append(mat)
-        if reps_3d_ref is None:
-            reps_3d_ref = reps_3d
+        seed_reps.append([_reshape_to_3d(raw[k], hidden_size) for k in sorted_idx])
 
-    if not matrices:
-        print(f"  [{method}] No representations/{probe_task}.npz found, skipping temporal similarity.")
+    if not seed_reps:
+        print(f"  [{method}] No representations/{probe_task}.npz found, skipping temporal correlation.")
         return
 
-    mean_mat = np.mean(np.stack(matrices), axis=0)
-    n_checkpoints = len(reps_3d_ref)
-    seq_len = reps_3d_ref[0].shape[1]
-
-    out_subdir = os.path.join(output_dir, "temporal_similarity")
+    n_checkpoints = len(seed_reps[0])
+    seq_len = seed_reps[0][0].shape[1]
+    out_subdir = os.path.join(output_dir, "temporal_correlation")
     os.makedirs(out_subdir, exist_ok=True)
-    out_path = os.path.join(out_subdir, f"cross_checkpoint_cosine_{probe_task}.pdf")
-    _plot_full_matrix(
-        mean_mat, seq_len, n_checkpoints, task_names,
-        probe_task, out_path, metric_label="Cosine Similarity (mean)",
-    )
-    plt.close()
-    print(f"  [{method}] temporal_similarity/cross_checkpoint_cosine_{probe_task}.pdf  ({len(matrices)} seeds)")
+
+    # (suffix, list of per-seed 3D reps sliced to that window)
+    windows: List[Tuple[str, List[List[torch.Tensor]]]] = [
+        ("", seed_reps),
+    ]
+    for split_name, t_start, t_end in epoch_splits(probe_task, seq_len):
+        sliced = [[r[:, t_start:t_end, :] for r in reps] for reps in seed_reps]
+        windows.append((f"_{split_name}", sliced))
+
+    for suffix, window_reps in windows:
+        matrices = [_build_full_matrix(reps_3d) for reps_3d in window_reps]
+        mean_mat = np.mean(np.stack(matrices), axis=0)
+        win_seq_len = window_reps[0][0].shape[1]
+        out_path = os.path.join(
+            out_subdir, f"cross_checkpoint_pearson_{probe_task}{suffix}.pdf"
+        )
+        _plot_full_matrix(
+            mean_mat, win_seq_len, n_checkpoints, task_names,
+            probe_task, out_path, metric_label="Pearson Correlation (mean)",
+        )
+        plt.close()
+        print(
+            f"  [{method}] temporal_correlation/cross_checkpoint_pearson_"
+            f"{probe_task}{suffix}.pdf  ({len(matrices)} seeds)"
+        )
 
 
 # ── main ─────────────────────────────────────────────────────────────────────
@@ -412,8 +432,8 @@ def main():
         # ── 3. vector drift ──
         plot_avg_vector_drift(seed_dirs, probe_task, method, method_out, args.hidden_size)
 
-        # ── 4. temporal similarity ──
-        plot_avg_temporal_similarity(seed_dirs, probe_task, task_names, method, method_out, args.hidden_size)
+        # ── 4. temporal correlation ──
+        plot_avg_temporal_correlation(seed_dirs, probe_task, task_names, method, method_out, args.hidden_size)
 
         print()
 

@@ -19,6 +19,7 @@ from src.analysis._plot_utils import (
     apply_paper_axis_style,
     layer_color_map,
     layer_errorbar_kwargs,
+    layer_display_name,
     layer_marker_map,
     sparse_value_ticks,
 )
@@ -44,18 +45,18 @@ def plot_drift_results(results: List[Dict], output_dir: str):
         cos_means = [d["cosine_sim_mean"] for d in layer_data]
         cos_stds = [d["cosine_sim_std"] for d in layer_data]
         line = ax1.errorbar(
-            xs, cos_means, yerr=cos_stds, label=f"{layer}",
+            xs, cos_means, yerr=cos_stds, label=layer_display_name(layer),
             **layer_errorbar_kwargs(colors[layer], markers[layer]),
         )
 
         shuffled_means = [d["shuffled_sim_mean"] for d in layer_data]
         ax1.plot(xs, shuffled_means, linestyle="--", color=line[0].get_color(), alpha=0.5,
-                 label=f"{layer} (Random)")
+                 label=f"{layer_display_name(layer)} (Random)")
 
         l2_means = [d["l2_dist_mean"] for d in layer_data]
         l2_stds = [d["l2_dist_std"] for d in layer_data]
         ax2.errorbar(
-            xs, l2_means, yerr=l2_stds, label=layer,
+            xs, l2_means, yerr=l2_stds, label=layer_display_name(layer),
             **layer_errorbar_kwargs(colors[layer], markers[layer]),
         )
 

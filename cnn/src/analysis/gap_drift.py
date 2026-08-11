@@ -27,6 +27,7 @@ from src.analysis._plot_utils import (
     apply_paper_axis_style,
     layer_color_map,
     layer_errorbar_kwargs,
+    layer_display_name,
     layer_marker_map,
     savefig_compact,
     sparse_value_ticks,
@@ -80,7 +81,7 @@ def _plot_all_layers(
     for layer, (gaps, means, stds) in all_results.items():
         all_gaps.extend(gaps)
         ax.errorbar(
-            gaps, means, yerr=stds, label=layer,
+            gaps, means, yerr=stds, label=layer_display_name(layer),
             **layer_errorbar_kwargs(colors[layer], markers[layer]),
         )
 

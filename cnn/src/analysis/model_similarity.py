@@ -15,6 +15,7 @@ from src.analysis._plot_utils import (
     apply_paper_axis_style,
     layer_color_map,
     layer_errorbar_kwargs,
+    layer_display_name,
     layer_marker_map,
     savefig_compact,
     sparse_ticks,
@@ -89,7 +90,7 @@ def plot_similarity_decay_profile(
         gaps, means, stds = compute_similarity_by_gap(all_reps[layer_name], task_indices, exclude_first)
         all_gaps.extend(gaps)
         ax.errorbar(
-            gaps, means, yerr=stds, label=layer_name,
+            gaps, means, yerr=stds, label=layer_display_name(layer_name),
             **layer_errorbar_kwargs(colors[layer_name], markers[layer_name]),
         )
 

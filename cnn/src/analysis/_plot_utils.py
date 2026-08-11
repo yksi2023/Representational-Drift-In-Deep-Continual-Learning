@@ -109,6 +109,32 @@ def layer_errorbar_kwargs(color: str, marker: str) -> Dict[str, object]:
     }
 
 
+def layer_display_name(layer: str) -> str:
+    """Convert an internal layer name to a paper-friendly display label.
+
+    Examples:
+        layer1            -> Stage 1
+        backbone.layer2   -> Stage 2
+        backbone.stages.0 -> Stage 1
+        layer4            -> Stage 4
+    """
+    short = layer.rsplit(".", 1)[-1]
+    if short.startswith("layer"):
+        num = short[len("layer"):]
+        return f"Stage {num}"
+    if short.startswith("stages."):
+        num = short[len("stages."):]
+        return f"Stage {int(num) + 1}"
+    if short.startswith("stages"):
+        return f"Stage {short[len('stages'):]}"
+    # Fallback: try to extract a trailing number
+    import re
+    m = re.search(r"(\d+)$", short)
+    if m:
+        return f"Stage {m.group(1)}"
+    return short
+
+
 def sparse_ticks(n: int) -> Tuple[List[int], List[str]]:
     """Return (positions, labels) showing only start, middle, and end ticks.
 

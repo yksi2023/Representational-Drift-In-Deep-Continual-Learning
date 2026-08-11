@@ -25,8 +25,8 @@
 # -----------------------------------------------------------------------------
 set -euo pipefail
 ulimit -n 65536
-module load miniforge3/26.1
-source activate drift
+source /data/apps/miniforge3/26.1/etc/profile.d/conda.sh
+conda activate drift
 
 if [ $# -lt 1 ]; then
     echo "Usage: sbatch [slurm opts] b_analysis.sh <i> [--force | --report-only] [arm_patterns ...]"
@@ -58,6 +58,7 @@ SCRIPT_DIR="${SLURM_SUBMIT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}"
 WORK_DIR="${SCRIPT_DIR}/cnn"
 EXP_ROOT="${WORK_DIR}/experiments"
 PREFIX="exp${IDX}b_cnn_"
+REPORT_DIR="${EXP_ROOT}/exp${IDX}b_report"
 LOG_DIR="${EXP_ROOT}/logs"
 mkdir -p "${LOG_DIR}"
 
@@ -172,5 +173,8 @@ fi
 
 echo ""
 echo "==> [exp${IDX}b] Building comparison report..."
-python compare_experiment_b.py --exp_root "${EXP_ROOT}" --glob "${PREFIX}*"
-echo "Done."
+python compare_experiment_b.py \
+    --exp_root "${EXP_ROOT}" \
+    --glob "${PREFIX}*" \
+    --out_dir "${REPORT_DIR}"
+echo "Done. Results in: ${REPORT_DIR}"

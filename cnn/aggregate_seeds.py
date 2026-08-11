@@ -9,8 +9,10 @@ Outputs (per method):
   2. similarity_matrix_<layer>.pdf    -- pairwise cosine similarity heatmap (mean)
   3. sample_similarity_cka.pdf        -- CKA vs task index (mean ± std)
   4. sample_similarity_frobenius_norm.pdf -- Frobenius norm vs task index (mean ± std)
-  5. reference_drift.pdf              -- cosine sim & L2 vs task index (mean ± std)
-  6. gap_drift_sample_pv.pdf          -- Sample-PV Pearson corr vs task gap (mean ± std)
+  5. sample_sim_cka_matrix_<layer>.pdf -- T×T CKA of sample-sim matrices (mean)
+  6. sample_similarity_matrices/      -- seed-averaged N×N sample-sim heatmaps (all ckpts)
+  7. reference_drift.pdf              -- cosine sim & L2 vs task index (mean ± std)
+  8. gap_drift_sample_pv.pdf          -- Sample-PV Pearson corr vs task gap (mean ± std)
 
 Usage:
     python aggregate_seeds.py \\
@@ -44,6 +46,7 @@ from src.analysis._plot_utils import (
     layer_errorbar_kwargs,
     layer_marker_map,
     layer_sequential_color_map,
+    layer_display_name,
     savefig_compact,
     sparse_ticks,
     sparse_value_ticks,
@@ -145,6 +148,83 @@ def load_sample_similarity_evolution(
     return result if result else None
 
 
+def load_sample_similarity_gap(
+    exp_dir: str,
+    layers: List[str],
+) -> Optional[Dict[str, Dict[str, List[float]]]]:
+    """Load per-layer gap-indexed CKA/Frobenius evolution metrics."""
+    path = os.path.join(
+        exp_dir,
+        "drift_analysis",
+        "sample_similarity_evolution",
+        "similarity_evolution_gap_metrics.json",
+    )
+    if not os.path.exists(path):
+        return None
+    with open(path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+    result = {layer: data[layer] for layer in layers if layer in data}
+    return result if result else None
+
+
+def load_sample_sim_cka_matrix(exp_dir: str, layer: str) -> Optional[np.ndarray]:
+    """Load T×T CKA matrix over sample-similarity matrices."""
+    safe_layer = layer.replace(".", "_").replace("/", "_")
+    path = os.path.join(
+        exp_dir, "drift_analysis", "sample_similarity_evolution",
+        f"sample_sim_cka_matrix_{safe_layer}.npy",
+    )
+    if os.path.exists(path):
+        return np.load(path)
+    return None
+
+
+def load_sample_similarity_matrix(
+    exp_dir: str, layer: str, task_idx: int,
+) -> Optional[np.ndarray]:
+    """Load one checkpoint's N×N sample cosine similarity matrix."""
+    safe_layer = layer.replace(".", "_").replace("/", "_")
+    path = os.path.join(
+        exp_dir, "drift_analysis", "sample_similarity_matrices", safe_layer,
+        f"sample_sim_task{task_idx}_{safe_layer}.npy",
+    )
+    if os.path.exists(path):
+        return np.load(path)
+    return None
+
+
+def discover_sample_sim_tasks(exp_dir: str, layer: str) -> List[int]:
+    """List task indices that have saved sample-sim .npy for ``layer``."""
+    safe_layer = layer.replace(".", "_").replace("/", "_")
+    layer_dir = os.path.join(
+        exp_dir, "drift_analysis", "sample_similarity_matrices", safe_layer,
+    )
+    if not os.path.isdir(layer_dir):
+        return []
+    tasks = []
+    prefix = f"sample_sim_task"
+    suffix = f"_{safe_layer}.npy"
+    for name in os.listdir(layer_dir):
+        if name.startswith(prefix) and name.endswith(suffix):
+            mid = name[len(prefix):-len(suffix)]
+            try:
+                tasks.append(int(mid))
+            except ValueError:
+                continue
+    return sorted(tasks)
+
+
+def load_class_boundaries(exp_dir: str) -> Optional[List[int]]:
+    path = os.path.join(
+        exp_dir, "drift_analysis", "sample_similarity_matrices", "class_boundaries.json",
+    )
+    if not os.path.exists(path):
+        return None
+    with open(path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+    return [int(b) for b in data.get("boundaries", [])]
+
+
 def remove_stale_plot(output_dir: str, filename: str) -> None:
     """Remove an old aggregate plot when its current source data is unavailable."""
     path = os.path.join(output_dir, filename)
@@ -178,6 +258,13 @@ def plot_avg_accuracy_matrix(
         ax.set_ylabel("Evaluated Task")
     else:
         ax.set_yticks([])
+    titles = {
+        "normal": "Sequential training",
+        "replay": "Replay",
+        "ewc": "EWC",
+        "lwf": "LwF",
+    }
+    ax.set_title(titles.get(method, method), fontsize=34, pad=30)
     apply_paper_axis_style(ax)
     path = os.path.join(output_dir, "accuracy_matrix.pdf")
     savefig_compact(fig, path)
@@ -217,6 +304,73 @@ def plot_avg_similarity_matrix(
     print(f"  [{method}] similarity_matrix_{safe_layer}.pdf  ({len(sim_matrices)} seeds)")
 
 
+def plot_avg_sample_sim_cka_matrix(
+    matrices: List[np.ndarray],
+    method: str,
+    layer: str,
+    output_dir: str,
+):
+    """Average T×T sample-sim CKA matrices across seeds and plot heatmap."""
+    stacked = np.stack(matrices, axis=0)
+    mean_mat = np.nanmean(stacked, axis=0)
+
+    n = mean_mat.shape[0]
+    fig, ax = plt.subplots(figsize=SINGLE_FIGSIZE)
+    ax.imshow(mean_mat, cmap="viridis", vmin=0, vmax=1, aspect="equal")
+    ax.set_box_aspect(1)
+    sp, sl = sparse_ticks(n)
+    ax.set_xticks(sp); ax.set_xticklabels(sl)
+    ax.set_xlabel("Model after Task")
+    if method == "normal":
+        ax.set_yticks(sp); ax.set_yticklabels(sl)
+        ax.set_ylabel("Model after Task")
+    else:
+        ax.set_yticks([])
+    apply_paper_axis_style(ax)
+    safe_layer = layer.replace(".", "_").replace("/", "_")
+    path = os.path.join(output_dir, f"sample_sim_cka_matrix_{safe_layer}.pdf")
+    savefig_compact(fig, path)
+    plt.close()
+    print(f"  [{method}] sample_sim_cka_matrix_{safe_layer}.pdf  ({len(matrices)} seeds)")
+
+
+def plot_avg_sample_similarity_matrix(
+    matrices: List[np.ndarray],
+    method: str,
+    layer: str,
+    task_idx: int,
+    output_dir: str,
+    class_boundaries: Optional[List[int]] = None,
+):
+    """Average N×N sample cosine similarity matrices across seeds and plot."""
+    stacked = np.stack(matrices, axis=0)
+    mean_mat = np.nanmean(stacked, axis=0)
+
+    safe_layer = layer.replace(".", "_").replace("/", "_")
+    out_dir = os.path.join(output_dir, "sample_similarity_matrices", safe_layer)
+    os.makedirs(out_dir, exist_ok=True)
+
+    fig, ax = plt.subplots(figsize=(7, 6))
+    ax.imshow(mean_mat, cmap="viridis", vmin=0, vmax=1, aspect="auto")
+    if class_boundaries:
+        for boundary in class_boundaries:
+            ax.axhline(y=boundary - 0.5, color="black", linewidth=0.5, alpha=0.5)
+            ax.axvline(x=boundary - 0.5, color="black", linewidth=0.5, alpha=0.5)
+    ax.set_xlabel("Sample Index (sorted by class)")
+    if method == "normal":
+        ax.set_ylabel("Sample Index (sorted by class)")
+    else:
+        ax.set_yticks([])
+    apply_paper_axis_style(ax)
+    path = os.path.join(out_dir, f"sample_sim_task{task_idx}_{safe_layer}.pdf")
+    savefig_compact(fig, path)
+    plt.close()
+    print(
+        f"  [{method}] sample_similarity_matrices/{safe_layer}/"
+        f"sample_sim_task{task_idx}_{safe_layer}.pdf  ({len(matrices)} seeds)"
+    )
+
+
 # ── plot 3: sample similarity evolution ─────────────────────────────────────
 
 def plot_avg_sample_similarity_evolution(
@@ -240,12 +394,11 @@ def plot_avg_sample_similarity_evolution(
 
     plotted_layers = [layer for layer in layers if layer in grouped]
     colors = layer_sequential_color_map(plotted_layers)
-    markers = layer_marker_map(plotted_layers)
     specifications = (
-        ("cka", "CKA (vs Task 0)", "sample_similarity_cka.pdf", (0, 1.05)),
+        ("cka", "CKA relative to Task 1", "sample_similarity_cka.pdf", (0, 1.05)),
         (
             "frobenius_norm",
-            "Frobenius Norm (vs Task 0)",
+            "Frobenius Norm relative to Task 1",
             "sample_similarity_frobenius_norm.pdf",
             None,
         ),
@@ -265,8 +418,17 @@ def plot_avg_sample_similarity_evolution(
                 tasks,
                 means,
                 yerr=stds,
-                label=layer,
-                **layer_errorbar_kwargs(colors[layer], markers[layer]),
+                label=layer_display_name(layer),
+                **{
+                    **layer_errorbar_kwargs(colors[layer], "o"),
+                    "linewidth": 5.0,
+                    "markersize": 11,
+                    "markeredgecolor": "none",
+                    "markeredgewidth": 0,
+                    "elinewidth": 2.5,
+                    "capthick": 2.5,
+                    "capsize": 5,
+                },
             )
 
         ax.set_xlabel("Task")
@@ -296,6 +458,83 @@ def plot_avg_sample_similarity_evolution(
         savefig_compact(fig, path)
         plt.close(fig)
         print(f"  [{method}] {filename}  ({len(all_seed_metrics)} seeds)")
+
+
+def plot_avg_sample_similarity_gap(
+    all_seed_results: List[Dict[str, Dict[str, List[float]]]],
+    layers: List[str],
+    method: str,
+    output_dir: str,
+):
+    """Average gap-indexed CKA/Frobenius curves across seeds.
+
+    Styled identically to plot_avg_gap_drift (gap_drift_sample_pv.pdf).
+    all_seed_results: list of {layer: {"gaps":..., "cka_means":..., "frobenius_norm_means":...}} per seed.
+    """
+    layer_names = [l for l in layers if any(l in r for r in all_seed_results)]
+    n_layers = len(layer_names)
+    blue_shades = plt.cm.Blues(
+        np.linspace(0.35, 0.85, n_layers) if n_layers > 1 else np.array([0.7])
+    )
+
+    specifications = (
+        ("cka_means", "CKA of sample similarity matrix", "sample_similarity_gap_cka.pdf", (-0.1, 1.05)),
+        ("frobenius_norm_means", "Frobenius Norm", "sample_similarity_gap_frobenius_norm.pdf", None),
+    )
+
+    for metric_key, ylabel, filename, ylim in specifications:
+        fig, ax = plt.subplots(figsize=(8.8, 7.5))
+        all_gaps_union: List[int] = []
+
+        for layer, color in zip(layer_names, blue_shades):
+            gap_to_values: Dict[int, List[float]] = defaultdict(list)
+            for seed_result in all_seed_results:
+                if layer not in seed_result:
+                    continue
+                data = seed_result[layer]
+                for g, m in zip(data["gaps"], data[metric_key]):
+                    gap_to_values[g].append(m)
+
+            gaps_sorted = sorted(gap_to_values.keys())
+            all_gaps_union.extend(gaps_sorted)
+            avg = [np.mean(gap_to_values[g]) for g in gaps_sorted]
+            std = [np.std(gap_to_values[g]) for g in gaps_sorted]
+
+            ax.errorbar(
+                gaps_sorted, avg, yerr=std, label=layer_display_name(layer),
+                **{
+                    **layer_errorbar_kwargs(color, "o"),
+                    "linewidth": 5.0,
+                    "markersize": 11,
+                    "markeredgecolor": "none",
+                    "markeredgewidth": 0,
+                    "elinewidth": 2.5,
+                    "capthick": 2.5,
+                    "capsize": 5,
+                },
+            )
+
+        ax.set_xlabel("Task Gap")
+        if ylim is not None:
+            ax.set_ylim(*ylim)
+        ax.set_ylabel(ylabel)
+        apply_paper_axis_style(
+            ax, legend=(method == "normal"),
+            legend_kwargs={
+                "loc": "upper right",
+                "fontsize": LEGEND_FONT_SIZE,
+                "title_fontsize": LEGEND_TITLE_SIZE,
+            },
+        )
+        ax.grid(True, linestyle="--", alpha=0.3)
+        if all_gaps_union:
+            ticks, labels = sparse_value_ticks(all_gaps_union)
+            ax.set_xticks(ticks); ax.set_xticklabels(labels)
+
+        path = os.path.join(output_dir, filename)
+        savefig_compact(fig, path)
+        plt.close()
+        print(f"  [{method}] {filename}  ({len(all_seed_results)} seeds)")
 
 
 # ── plot 4: reference drift ─────────────────────────────────────────────────
@@ -340,7 +579,7 @@ def plot_avg_reference_drift(
         shuf_mean = [np.mean(task_data[t]["shuffled"]) for t in sorted_tasks]
 
         ax1.errorbar(
-            sorted_tasks, cos_mean, yerr=cos_std, label=layer,
+            sorted_tasks, cos_mean, yerr=cos_std, label=layer_display_name(layer),
             **layer_errorbar_kwargs(color, markers[layer]),
         )
         ax1.plot(sorted_tasks, shuf_mean, linestyle="--", color=color, alpha=0.4)
@@ -348,7 +587,7 @@ def plot_avg_reference_drift(
         l2_mean = [np.mean(task_data[t]["l2"]) for t in sorted_tasks]
         l2_std = [np.std(task_data[t]["l2"]) for t in sorted_tasks]
         ax2.errorbar(
-            sorted_tasks, l2_mean, yerr=l2_std, label=layer,
+            sorted_tasks, l2_mean, yerr=l2_std, label=layer_display_name(layer),
             **layer_errorbar_kwargs(color, markers[layer]),
         )
 
@@ -414,7 +653,7 @@ def plot_avg_gap_drift(
         std = [np.std(gap_to_values[g]) for g in gaps_sorted]
 
         ax.errorbar(
-            gaps_sorted, avg, yerr=std, label=layer,
+            gaps_sorted, avg, yerr=std, label=layer_display_name(layer),
             **{
                 **layer_errorbar_kwargs(color, "o"),
                 "linewidth": 5.0,
@@ -432,7 +671,9 @@ def plot_avg_gap_drift(
     if method == "normal":
         ax.set_ylabel("Pearson Correlation")
     else:
-        ax.set_yticks([])
+        # Keep y-tick locations so the grid remains; hide labels/marks so
+        # bbox_inches="tight" does not reserve left-side whitespace.
+        ax.tick_params(axis="y", labelleft=False, length=0, pad=0)
     apply_paper_axis_style(
         ax, legend=(method == "normal"),
         legend_kwargs={
@@ -551,6 +792,66 @@ def main():
         else:
             print(f"  [{method}] No sample similarity evolution metrics found, skipping. "
                   f"Run analysis_cnn.sh first without --skip_sample_sim.")
+
+        # ── Plot 3b: sample similarity gap (from pre-computed gap JSON) ──
+        sample_sim_gap_results = []
+        for sd in seed_dirs:
+            g = load_sample_similarity_gap(sd, layers)
+            if g is not None:
+                sample_sim_gap_results.append(g)
+        if sample_sim_gap_results:
+            plot_avg_sample_similarity_gap(
+                sample_sim_gap_results, layers, method, method_out,
+            )
+        else:
+            for fn in ("sample_similarity_gap_cka.pdf",
+                       "sample_similarity_gap_frobenius_norm.pdf"):
+                remove_stale_plot(method_out, fn)
+            print(f"  [{method}] No sample similarity gap metrics found, skipping. "
+                  f"Run analysis_cnn.sh first without --skip_sample_sim.")
+
+        # ── Plot 3c: sample-sim CKA matrices (T×T, from pre-computed .npy) ──
+        for ln in layers:
+            cka_mats = []
+            for sd in seed_dirs:
+                m = load_sample_sim_cka_matrix(sd, ln)
+                if m is not None:
+                    cka_mats.append(m)
+            if cka_mats:
+                plot_avg_sample_sim_cka_matrix(cka_mats, method, ln, method_out)
+            else:
+                safe = ln.replace(".", "_").replace("/", "_")
+                remove_stale_plot(method_out, f"sample_sim_cka_matrix_{safe}.pdf")
+                print(f"  [{method}] No sample-sim CKA matrix .npy for {ln}, skipping. "
+                      f"Re-run analysis_cnn.sh without --skip_sample_sim.")
+
+        # ── Plot 3d: seed-averaged sample similarity matrices (all ckpts) ──
+        class_boundaries = None
+        for sd in seed_dirs:
+            class_boundaries = load_class_boundaries(sd)
+            if class_boundaries is not None:
+                break
+        any_sample_sim = False
+        for ln in layers:
+            task_sets = [discover_sample_sim_tasks(sd, ln) for sd in seed_dirs]
+            tasks = sorted(set(t for ts in task_sets for t in ts))
+            if not tasks:
+                continue
+            any_sample_sim = True
+            for task_idx in tasks:
+                mats = []
+                for sd in seed_dirs:
+                    m = load_sample_similarity_matrix(sd, ln, task_idx)
+                    if m is not None:
+                        mats.append(m)
+                if mats:
+                    plot_avg_sample_similarity_matrix(
+                        mats, method, ln, task_idx, method_out,
+                        class_boundaries=class_boundaries,
+                    )
+        if not any_sample_sim:
+            print(f"  [{method}] No sample similarity .npy matrices found, skipping. "
+                  f"Re-run analysis_cnn.sh without --skip_sample_sim.")
 
         # ── Plot 4: reference drift (from pre-computed metrics.json) ──
         ref_drift_results = []

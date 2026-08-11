@@ -12,8 +12,8 @@
 #   sbatch rnn_b_train.sh 1 --seeds 0,1,2 --lambdas 0.01,0.1,1
 set -euo pipefail
 ulimit -n 65536
-module load miniforge3/26.1
-source activate drift
+source /data/apps/miniforge3/26.1/etc/profile.d/conda.sh
+conda activate drift
 
 if [ $# -lt 1 ]; then
     echo "Usage: sbatch [slurm opts] rnn_b_train.sh <i> [--seeds s1,s2,...] [--lambdas l1,l2,...]"

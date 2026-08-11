@@ -4,7 +4,7 @@ This script provides comprehensive drift analysis including:
 1. Reference-anchored STPV drift metrics (cosine similarity, L2 distance over tasks)
 2. Model pairwise STPV similarity matrices
 3. Sample-wise STPV similarity matrices
-4. Cross-checkpoint PV similarity matrices
+4. Cross-checkpoint PV Pearson correlation matrices
 5. Vector drift (STPV / PV / ERV / TCV Pearson correlation vs task gap)
 6. Coding / null subspace drift decomposition
 7. Performance plots (from saved performance_history.json)
@@ -26,7 +26,7 @@ from src.analysis import (
     run_reference_drift,
     run_model_similarity,
     run_sample_similarity,
-    run_temporal_similarity,
+    run_temporal_correlation,
     run_vector_drift,
     run_subspace_drift,
     plot_rnn_performance,
@@ -50,8 +50,8 @@ def parse_args():
                         help="Skip sample similarity matrices (can be slow for many tasks)")
     parser.add_argument("--skip_model_sim", action="store_true",
                         help="Skip model STPV similarity matrices")
-    parser.add_argument("--skip_temporal_sim", action="store_true",
-                        help="Skip cross-checkpoint temporal similarity")
+    parser.add_argument("--skip_temporal_corr", action="store_true",
+                        help="Skip cross-checkpoint temporal PV Pearson correlation")
     parser.add_argument("--skip_vector_drift", action="store_true",
                         help="Skip vector drift analysis")
     parser.add_argument("--skip_subspace_drift", action="store_true",
@@ -171,10 +171,10 @@ def main():
     else:
         print("\n[3/8] Skipping sample similarity (--skip_sample_sim).")
 
-    # 4. Temporal hidden state similarity
-    if not args.skip_temporal_sim:
-        print("\n[4/8] Running cross-checkpoint PV similarity...")
-        run_temporal_similarity(
+    # 4. Temporal PV Pearson correlation
+    if not args.skip_temporal_corr:
+        print("\n[4/8] Running cross-checkpoint PV Pearson correlation...")
+        run_temporal_correlation(
             exp_dir=args.exp_dir,
             probe_tasks=args.probe_tasks,
             task_names=task_names,
@@ -182,7 +182,7 @@ def main():
             hidden_size=args.hidden_size,
         )
     else:
-        print("\n[4/8] Skipping temporal similarity (--skip_temporal_sim).")
+        print("\n[4/8] Skipping temporal correlation (--skip_temporal_corr).")
 
     # 5. Vector drift (PV / ERV / TCV)
     if not args.skip_vector_drift:
