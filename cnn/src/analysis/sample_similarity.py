@@ -46,8 +46,8 @@ def plot_sample_similarity_matrix(
             ax.axhline(y=boundary - 0.5, color="black", linewidth=0.5, alpha=0.5)
             ax.axvline(x=boundary - 0.5, color="black", linewidth=0.5, alpha=0.5)
 
-    ax.set_xlabel("Sample Index (sorted by class)")
-    ax.set_ylabel("Sample Index (sorted by class)")
+    ax.set_xlabel("Sample Index")
+    ax.set_ylabel("Sample Index")
     apply_paper_axis_style(ax)
     plt.tight_layout()
     plt.savefig(output_path)
@@ -342,7 +342,7 @@ def run_sample_similarity_evolution(
         )
 
     axes[0].set_xlabel("Task")
-    axes[0].set_ylabel("CKA relative to Task 1")
+    axes[0].set_ylabel("Sample similarity CKA")
     axes[0].set_ylim(0, 1.05)
     axes[0].legend(fontsize=8)
     apply_paper_axis_style(axes[0])
@@ -362,7 +362,7 @@ def run_sample_similarity_evolution(
 
     # Plot: vs Task Gap
     _plot_gap_metric(
-        gap_metrics, "cka", "CKA",
+        gap_metrics, "cka", "Sample similarity CKA",
         os.path.join(evo_dir, "similarity_evolution_gap_cka.pdf"),
     )
     _plot_gap_metric(

@@ -32,7 +32,9 @@ from typing import Dict, List, Optional, Tuple
 
 import matplotlib
 matplotlib.use("Agg")
+import matplotlib.patheffects as patheffects
 import matplotlib.pyplot as plt
+from matplotlib.colors import LinearSegmentedColormap, to_rgba
 import numpy as np
 
 from src.analysis._plot_utils import (
@@ -51,6 +53,67 @@ from src.analysis._plot_utils import (
     sparse_ticks,
     sparse_value_ticks,
 )
+
+# LaTeX grid (\figonepanel, equal width):
+#   [task heatmap] [task heatmap] [task heatmap]
+#   [CKA matrix]   [CKA vs task]  [CKA vs gap]
+#
+# All six PDFs share one page so equal-width \includegraphics gives equal
+# height. A square matrix on a W x H page leaves (W - H) - margins of unused
+# width, so the page is only slightly wider than tall: enough for the curves
+# to read as landscape, little enough that the matrices nearly fill it. The
+# remainder is split evenly left/right (anchor "C"), never dumped on one side.
+_PANEL_FIGSIZE = (6.4, 5.8)
+_PANEL_MARGINS = dict(left=0.19, right=0.98, bottom=0.18, top=0.97)
+_PANEL_LABEL_SIZE = 28
+_PANEL_TICK_SIZE = 24
+_PANEL_LEGEND_SIZE = 14
+
+
+def _save_fixed_page(fig, path: str) -> None:
+    """Write the full figure page. rcParams savefig.bbox='tight' would crop."""
+    with plt.rc_context({"savefig.bbox": None}):
+        fig.savefig(path)
+
+
+def savefig_panel_curve(fig, path: str) -> None:
+    """Curve fills the page; tight_layout sizes margins to the labels."""
+    fig.set_size_inches(*_PANEL_FIGSIZE, forward=True)
+    for ax in fig.axes:
+        ax.xaxis.label.set_size(_PANEL_LABEL_SIZE)
+        ax.yaxis.label.set_size(_PANEL_LABEL_SIZE)
+        ax.tick_params(axis="both", labelsize=_PANEL_TICK_SIZE)
+        legend = ax.get_legend()
+        if legend is not None:
+            plt.setp(legend.get_texts(), fontsize=_PANEL_LEGEND_SIZE)
+    fig.tight_layout(pad=0.4)
+    _save_fixed_page(fig, path)
+
+
+def savefig_panel_heatmap(fig, ax, path: str) -> None:
+    """Square matrix centred on the shared page."""
+    fig.set_size_inches(*_PANEL_FIGSIZE, forward=True)
+    fig.subplots_adjust(**_PANEL_MARGINS)
+    ax.set_box_aspect(1)
+    ax.set_anchor("C")
+    ax.xaxis.label.set_size(_PANEL_LABEL_SIZE)
+    ax.yaxis.label.set_size(_PANEL_LABEL_SIZE)
+    ax.tick_params(axis="both", pad=6, labelsize=_PANEL_TICK_SIZE)
+    for lab in list(ax.get_xticklabels()) + list(ax.get_yticklabels()):
+        lab.set_clip_on(False)
+    _save_fixed_page(fig, path)
+
+
+# ColorBrewer Reds, skipping the palest bin so 4 layers stay distinct on white.
+_STRONG_REDS = ("#FCBBA1", "#FC9272", "#EF3B2C", "#A50F15")
+
+
+def _strong_red_shades(n: int):
+    """Light-to-dark reds with more contrast than plt.cm.Reds(0.35–0.85)."""
+    if n <= 1:
+        return [np.array(to_rgba(_STRONG_REDS[2]))]
+    cmap = LinearSegmentedColormap.from_list("strong_reds", _STRONG_REDS)
+    return cmap(np.linspace(0.0, 1.0, n))
 
 
 # ── helpers ──────────────────────────────────────────────────────────────────
@@ -315,21 +378,19 @@ def plot_avg_sample_sim_cka_matrix(
     mean_mat = np.nanmean(stacked, axis=0)
 
     n = mean_mat.shape[0]
-    fig, ax = plt.subplots(figsize=SINGLE_FIGSIZE)
-    ax.imshow(mean_mat, cmap="viridis", vmin=0, vmax=1, aspect="equal")
-    ax.set_box_aspect(1)
+    fig, ax = plt.subplots(figsize=_PANEL_FIGSIZE)
+    ax.imshow(mean_mat, cmap="viridis", vmin=0, vmax=1)
     sp, sl = sparse_ticks(n)
-    ax.set_xticks(sp); ax.set_xticklabels(sl)
+    ax.set_xticks(sp)
+    ax.set_xticklabels(sl)
+    ax.set_yticks(sp)
+    ax.set_yticklabels(sl)
     ax.set_xlabel("Model after Task")
-    if method == "normal":
-        ax.set_yticks(sp); ax.set_yticklabels(sl)
-        ax.set_ylabel("Model after Task")
-    else:
-        ax.set_yticks([])
+    ax.set_ylabel("Model after Task")
     apply_paper_axis_style(ax)
     safe_layer = layer.replace(".", "_").replace("/", "_")
     path = os.path.join(output_dir, f"sample_sim_cka_matrix_{safe_layer}.pdf")
-    savefig_compact(fig, path)
+    savefig_panel_heatmap(fig, ax, path)
     plt.close()
     print(f"  [{method}] sample_sim_cka_matrix_{safe_layer}.pdf  ({len(matrices)} seeds)")
 
@@ -350,20 +411,30 @@ def plot_avg_sample_similarity_matrix(
     out_dir = os.path.join(output_dir, "sample_similarity_matrices", safe_layer)
     os.makedirs(out_dir, exist_ok=True)
 
-    fig, ax = plt.subplots(figsize=(7, 6))
-    ax.imshow(mean_mat, cmap="viridis", vmin=0, vmax=1, aspect="auto")
+    fig, ax = plt.subplots(figsize=_PANEL_FIGSIZE)
+    ax.imshow(mean_mat, cmap="viridis", vmin=0, vmax=1)
     if class_boundaries:
         for boundary in class_boundaries:
             ax.axhline(y=boundary - 0.5, color="black", linewidth=0.5, alpha=0.5)
             ax.axvline(x=boundary - 0.5, color="black", linewidth=0.5, alpha=0.5)
-    ax.set_xlabel("Sample Index (sorted by class)")
-    if method == "normal":
-        ax.set_ylabel("Sample Index (sorted by class)")
-    else:
-        ax.set_yticks([])
+    n = mean_mat.shape[0]
+    sp, _ = sparse_ticks(n)
+    ticklabels = [str(i + 1) for i in sp]
+    ax.set_xticks(sp)
+    ax.set_xticklabels(ticklabels)
+    ax.set_yticks(sp)
+    ax.set_yticklabels(ticklabels)
+    ax.set_xlabel("Sample Index")
+    ax.set_ylabel("Sample Index")
     apply_paper_axis_style(ax)
+    ax.text(
+        0.03, 0.97, f"t={task_idx}", transform=ax.transAxes,
+        va="top", ha="left", fontsize=_PANEL_TICK_SIZE, fontweight="bold",
+        color="white",
+        path_effects=[patheffects.withStroke(linewidth=2.5, foreground="black")],
+    )
     path = os.path.join(out_dir, f"sample_sim_task{task_idx}_{safe_layer}.pdf")
-    savefig_compact(fig, path)
+    savefig_panel_heatmap(fig, ax, path)
     plt.close()
     print(
         f"  [{method}] sample_similarity_matrices/{safe_layer}/"
@@ -395,17 +466,18 @@ def plot_avg_sample_similarity_evolution(
     plotted_layers = [layer for layer in layers if layer in grouped]
     colors = layer_sequential_color_map(plotted_layers)
     specifications = (
-        ("cka", "CKA relative to Task 1", "sample_similarity_cka.pdf", (0, 1.05)),
+        ("cka", "Sample similarity CKA", "sample_similarity_cka.pdf", (0, 1.05), True),
         (
             "frobenius_norm",
             "Frobenius Norm relative to Task 1",
             "sample_similarity_frobenius_norm.pdf",
             None,
+            False,
         ),
     )
 
-    for metric, ylabel, filename, ylim in specifications:
-        fig, ax = plt.subplots(figsize=WIDE_FIGSIZE)
+    for metric, ylabel, filename, ylim, panel in specifications:
+        fig, ax = plt.subplots(figsize=_PANEL_FIGSIZE if panel else WIDE_FIGSIZE)
         all_tasks: List[int] = []
         for layer in plotted_layers:
             task_data = grouped[layer]
@@ -445,17 +517,17 @@ def plot_avg_sample_similarity_evolution(
             ax,
             legend=True,
             legend_kwargs={
-                "fontsize": SMALL_LEGEND_FONT_SIZE,
-                "title_fontsize": SMALL_LEGEND_TITLE_SIZE,
+                "fontsize": SMALL_LEGEND_FONT_SIZE if panel else LEGEND_FONT_SIZE,
+                "title_fontsize": SMALL_LEGEND_TITLE_SIZE if panel else LEGEND_TITLE_SIZE,
             },
         )
-        ax.xaxis.label.set_size(24)
-        ax.yaxis.label.set_size(24)
-        ax.tick_params(axis="both", labelsize=20)
         ax.grid(True, linestyle="--", alpha=0.3)
 
         path = os.path.join(output_dir, filename)
-        savefig_compact(fig, path)
+        if panel:
+            savefig_panel_curve(fig, path)
+        else:
+            savefig_compact(fig, path)
         plt.close(fig)
         print(f"  [{method}] {filename}  ({len(all_seed_metrics)} seeds)")
 
@@ -473,20 +545,24 @@ def plot_avg_sample_similarity_gap(
     """
     layer_names = [l for l in layers if any(l in r for r in all_seed_results)]
     n_layers = len(layer_names)
-    blue_shades = plt.cm.Blues(
-        np.linspace(0.35, 0.85, n_layers) if n_layers > 1 else np.array([0.7])
-    )
+    cmap_shades = {
+        "Reds": _strong_red_shades(n_layers),
+        "Blues": plt.cm.Blues(
+            np.linspace(0.35, 0.85, n_layers) if n_layers > 1 else np.array([0.7])
+        ),
+    }
 
     specifications = (
-        ("cka_means", "CKA of sample similarity matrix", "sample_similarity_gap_cka.pdf", (-0.1, 1.05)),
-        ("frobenius_norm_means", "Frobenius Norm", "sample_similarity_gap_frobenius_norm.pdf", None),
+        ("cka_means", "Sample similarity CKA", "sample_similarity_gap_cka.pdf", (-0.1, 1.05), "Reds", True, "lower left", True),
+        ("frobenius_norm_means", "Frobenius Norm", "sample_similarity_gap_frobenius_norm.pdf", None, "Blues", method == "normal", "upper right", False),
     )
 
-    for metric_key, ylabel, filename, ylim in specifications:
-        fig, ax = plt.subplots(figsize=(8.8, 7.5))
+    for metric_key, ylabel, filename, ylim, cmap_name, show_legend, legend_loc, panel in specifications:
+        fig, ax = plt.subplots(figsize=_PANEL_FIGSIZE if panel else WIDE_FIGSIZE)
         all_gaps_union: List[int] = []
+        shades = cmap_shades[cmap_name]
 
-        for layer, color in zip(layer_names, blue_shades):
+        for layer, color in zip(layer_names, shades):
             gap_to_values: Dict[int, List[float]] = defaultdict(list)
             for seed_result in all_seed_results:
                 if layer not in seed_result:
@@ -519,11 +595,11 @@ def plot_avg_sample_similarity_gap(
             ax.set_ylim(*ylim)
         ax.set_ylabel(ylabel)
         apply_paper_axis_style(
-            ax, legend=(method == "normal"),
+            ax, legend=show_legend,
             legend_kwargs={
-                "loc": "upper right",
-                "fontsize": LEGEND_FONT_SIZE,
-                "title_fontsize": LEGEND_TITLE_SIZE,
+                "loc": legend_loc,
+                "fontsize": SMALL_LEGEND_FONT_SIZE if panel else LEGEND_FONT_SIZE,
+                "title_fontsize": SMALL_LEGEND_TITLE_SIZE if panel else LEGEND_TITLE_SIZE,
             },
         )
         ax.grid(True, linestyle="--", alpha=0.3)
@@ -532,7 +608,10 @@ def plot_avg_sample_similarity_gap(
             ax.set_xticks(ticks); ax.set_xticklabels(labels)
 
         path = os.path.join(output_dir, filename)
-        savefig_compact(fig, path)
+        if panel:
+            savefig_panel_curve(fig, path)
+        else:
+            savefig_compact(fig, path)
         plt.close()
         print(f"  [{method}] {filename}  ({len(all_seed_results)} seeds)")
 

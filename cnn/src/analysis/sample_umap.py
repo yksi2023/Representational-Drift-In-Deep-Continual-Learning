@@ -261,7 +261,7 @@ def _plot_by_class(
         ax.tick_params(left=False, bottom=False,
                        labelleft=False, labelbottom=False)
         apply_paper_axis_style(ax)
-        ax.text(0.02, 0.97, f"T{ax_idx + 1}", transform=ax.transAxes,
+        ax.text(0.02, 0.97, f"t={ax_idx + 1}", transform=ax.transAxes,
                 va="top", ha="left", fontsize=TICK_LABEL_SIZE, fontweight="bold")
 
     # Hide unused axes
@@ -350,7 +350,7 @@ def _plot_by_class_paper_subset(
         ax.set_ylabel("UMAP 2")
         ax.tick_params(left=False, bottom=False, labelleft=False, labelbottom=False)
         apply_paper_axis_style(ax)
-        ax.text(0.03, 0.96, f"T{label_num}", transform=ax.transAxes,
+        ax.text(0.03, 0.96, f"t={label_num}", transform=ax.transAxes,
                 va="top", ha="left", fontsize=TICK_LABEL_SIZE, fontweight="bold")
 
     plt.tight_layout()
@@ -379,7 +379,7 @@ def _plot_by_checkpoint(
             z[:, 0], z[:, 1],
             facecolors="none", edgecolors=[palette[i]] * len(z),
             s=OPEN_MARKER_SIZE, alpha=0.7, linewidths=OPEN_MARKER_LINEWIDTH,
-            label=f"T{i + 1}",
+            label=f"t={i + 1}",
         )
 
     ax.set_xlabel("UMAP 1")
@@ -397,7 +397,7 @@ def _plot_by_checkpoint(
             [0], [0], marker="o", linestyle="none",
             markerfacecolor="none", markeredgecolor=palette[i],
             markeredgewidth=OPEN_MARKER_LINEWIDTH * 1.4, markersize=10,
-            label=f"T{i + 1}",
+            label=f"t={i + 1}",
         )
         for i in range(T)
     ]
